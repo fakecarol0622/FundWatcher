@@ -1,8 +1,8 @@
-# Fund Watcher Implementation Tasks
+﻿# Fund Watcher Implementation Tasks
 
 ## Phase 1 MVP
 
-- [ ] Step 1: 初始化项目
+- [x] Step 1: 初始化项目
 - [ ] Step 2: 定义 types 和 storageService
 - [ ] Step 3: 实现 Pinia stores
 - [ ] Step 4: 实现自选基金管理
