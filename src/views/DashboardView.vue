@@ -3,10 +3,12 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowDown, ArrowRight, Plus, Refresh, Warning } from "@element-plus/icons-vue";
 import { useFundStore } from "../stores/fundStore";
+import { useHoldingStore } from "../stores/holdingStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { DEFAULT_INDEX_CODES, DEFAULT_INDEXES, indexDataSource } from "../services/indexDataSource";
 import { formatDateTime, isAStockTradingTime } from "../services/timeService";
 import type { DataStatus, FundEstimate, FundItem } from "../types/fund";
+import type { HoldingComputed } from "../types/holding";
 import type { IndexDefinition } from "../services/indexDataSource";
 import type { IndexQuote } from "../types/indexQuote";
 
@@ -32,6 +34,7 @@ const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
 
 const router = useRouter();
 const fundStore = useFundStore();
+const holdingStore = useHoldingStore();
 const settingsStore = useSettingsStore();
 
 const indexQuotes = ref<IndexQuote[]>([]);
@@ -89,6 +92,13 @@ const indexGroups = computed<IndexQuoteGroup[]>(() => {
 const hasFunds = computed(() => fundStore.funds.length > 0);
 const hasEnabledFunds = computed(() => enabledFunds.value.length > 0);
 const isTradingTime = computed(() => isAStockTradingTime());
+const holdingSummary = computed(() => holdingStore.summary);
+const holdingRowMap = computed<Record<string, HoldingComputed>>(() =>
+  holdingStore.computedHoldings.reduce<Record<string, HoldingComputed>>((result, row) => {
+    result[row.fundCode] = row;
+    return result;
+  }, {}),
+);
 
 const refreshIntervalMinutes = computed(() => {
   const value = Number(settingsStore.refreshIntervalMinutes);
@@ -124,6 +134,14 @@ function formatSignedNumber(value: number | null | undefined, digits = 2): strin
   }
 
   return `${value > 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
+
+function formatMoney(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return value.toFixed(2);
 }
 
 function formatMarketStatus(status: IndexQuote["marketStatus"] | undefined): string {
@@ -194,6 +212,10 @@ function getDisplayName(row: FundEstimateRow): string {
 
 function getAlias(fund: FundItem): string {
   return fund.alias?.trim() || "--";
+}
+
+function getHoldingProfit(code: string): number | null | undefined {
+  return holdingRowMap.value[code]?.estimatedProfit;
 }
 
 function getRowsSummary(rows: IndexQuoteRow[]): string {
@@ -286,6 +308,7 @@ function goToFunds(): void {
 
 onMounted(() => {
   fundStore.loadFromStorage();
+  holdingStore.loadFromStorage();
   settingsStore.loadFromStorage();
   void refreshDashboard();
   startRefreshTimer();
@@ -332,6 +355,39 @@ watch(
         show-icon
         title="当前为非交易时间，估值数据可能为最近一次更新数据或上次收盘数据。"
       />
+
+      <div class="portfolio-summary">
+        <div class="summary-item">
+          <span>总估算市值</span>
+          <strong>{{ formatMoney(holdingSummary.totalEstimatedMarketValue) }}</strong>
+        </div>
+
+        <div class="summary-item">
+          <span>总持有金额</span>
+          <strong>{{ formatMoney(holdingSummary.totalAmount) }}</strong>
+        </div>
+
+        <div class="summary-item">
+          <span>总估算盈亏</span>
+          <strong :class="getGrowthClass(holdingSummary.totalEstimatedProfit)">
+            {{ formatMoney(holdingSummary.totalEstimatedProfit) }}
+          </strong>
+        </div>
+
+        <div class="summary-item">
+          <span>总估算收益率</span>
+          <strong :class="getGrowthClass(holdingSummary.totalEstimatedProfitPercent)">
+            {{ formatGrowth(holdingSummary.totalEstimatedProfitPercent) }}
+          </strong>
+        </div>
+
+        <div class="summary-item">
+          <span>今日估算盈亏</span>
+          <strong :class="getGrowthClass(holdingSummary.totalTodayProfit)">
+            {{ formatMoney(holdingSummary.totalTodayProfit) }}
+          </strong>
+        </div>
+      </div>
     </el-card>
 
     <el-card shadow="never" class="index-card">
@@ -492,6 +548,13 @@ watch(
             </div>
 
             <div class="field">
+              <span>持仓盈亏</span>
+              <strong :class="getGrowthClass(getHoldingProfit(row.fund.code))">
+                {{ formatMoney(getHoldingProfit(row.fund.code)) }}
+              </strong>
+            </div>
+
+            <div class="field">
               <span>数据源</span>
               <strong>{{ row.estimate?.source || "--" }}</strong>
             </div>
@@ -556,6 +619,36 @@ watch(
 
 .market-alert {
   margin: 0;
+}
+
+.portfolio-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.summary-item {
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.summary-item span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.summary-item strong {
+  color: var(--el-text-color-primary);
+  font-size: 18px;
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .section-header {
@@ -795,6 +888,7 @@ watch(
   }
 
   .index-list,
+  .portfolio-summary,
   .estimate-list,
   .field-grid {
     grid-template-columns: 1fr;

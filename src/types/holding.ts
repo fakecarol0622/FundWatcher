@@ -1,7 +1,7 @@
 export interface Holding {
   fundCode: string;
-  shares: number;
-  costNav: number;
+  amount: number;
+  currentProfit: number;
   note?: string;
   updatedAt: number;
 }
@@ -9,13 +9,22 @@ export interface Holding {
 export interface HoldingComputed {
   fundCode: string;
   fundName: string;
-  shares: number;
-  costNav: number;
+  amount: number;
+  currentProfit: number;
+  principalAmount: number;
   currentEstimatedNav: number | null;
   latestNav: number | null;
-  costAmount: number;
+  latestMarketValue: number;
   estimatedMarketValue: number | null;
   estimatedProfit: number | null;
   estimatedProfitPercent: number | null;
   todayProfit: number | null;
+}
+
+export interface HoldingSummary {
+  totalAmount: number;
+  totalEstimatedMarketValue: number | null;
+  totalEstimatedProfit: number | null;
+  totalEstimatedProfitPercent: number | null;
+  totalTodayProfit: number | null;
 }

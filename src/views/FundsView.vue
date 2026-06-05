@@ -3,10 +3,12 @@ import { computed, reactive } from "vue";
 import { Delete, Plus, Setting, SwitchButton } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useFundStore } from "../stores/fundStore";
+import { useHoldingStore } from "../stores/holdingStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { FundItem } from "../types/fund";
 
 const fundStore = useFundStore();
+const holdingStore = useHoldingStore();
 const settingsStore = useSettingsStore();
 
 const addForm = reactive({
@@ -102,6 +104,7 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
     });
 
     fundStore.removeFund(fund.code);
+    holdingStore.removeHolding(fund.code);
     ElMessage.success("已删除自选基金");
   } catch {
     // User canceled.

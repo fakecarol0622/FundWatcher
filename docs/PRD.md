@@ -360,8 +360,8 @@ export interface IndexQuote {
 1. 添加持仓。
 2. 编辑持仓。
 3. 删除持仓。
-4. 设置持有份额。
-5. 设置成本净值。
+4. 设置持有金额。
+5. 设置目前已有收益。
 6. 设置备注。
 7. 页面刷新后持仓数据保留。
 
@@ -370,8 +370,8 @@ export interface IndexQuote {
 ```ts
 export interface Holding {
   fundCode: string;
-  shares: number;
-  costNav: number;
+  amount: number;
+  currentProfit: number;
   note?: string;
   updatedAt: number;
 }
@@ -379,9 +379,10 @@ export interface Holding {
 
 ### 6.4.4 输入规则
 
-1. `shares` 必须大于 0。
-2. `costNav` 必须大于 0。
-3. `fundCode` 必须来自已添加的自选基金。
+1. `amount` 必须大于 0，且表示当前持仓金额，已包含目前已有收益。
+2. `currentProfit` 必须为数字，可以为负数。
+3. `amount - currentProfit` 必须大于 0。
+4. `fundCode` 必须来自已添加的自选基金。
 
 ---
 
@@ -397,11 +398,12 @@ export interface Holding {
 export interface HoldingComputed {
   fundCode: string;
   fundName: string;
-  shares: number;
-  costNav: number;
+  amount: number;
+  currentProfit: number;
+  principalAmount: number;
   currentEstimatedNav: number | null;
   latestNav: number | null;
-  costAmount: number;
+  latestMarketValue: number;
   estimatedMarketValue: number | null;
   estimatedProfit: number | null;
   estimatedProfitPercent: number | null;
@@ -412,15 +414,19 @@ export interface HoldingComputed {
 ### 6.5.3 计算公式
 
 ```txt
-持仓成本 = 持有份额 * 持仓成本净值
+持有金额 = 用户录入的当前持仓金额，已包含目前已有收益
 
-估算市值 = 持有份额 * 当前估算净值
+推算本金 = 持有金额 - 目前已有收益
 
-估算盈亏 = 估算市值 - 持仓成本
+上一净值对应市值 = 持有金额
 
-估算收益率 = 估算盈亏 / 持仓成本 * 100%
+估算市值 = 上一净值对应市值 * (当前估算净值 / 上一个正式单位净值)
 
-今日估算盈亏 = 持有份额 * (当前估算净值 - 上一个正式单位净值)
+总估算盈亏 = 目前已有收益 + 今日估算盈亏
+
+总估算收益率 = 总估算盈亏 / 推算本金 * 100%
+
+今日估算盈亏 = 估算市值 - 上一净值对应市值
 ```
 
 ### 6.5.4 缺失数据处理
@@ -1211,8 +1217,8 @@ fund-watcher/
 ## 17.5 持仓管理
 
 - [ ] 可以为已添加基金设置持仓。
-- [ ] 可以输入持有份额。
-- [ ] 可以输入成本净值。
+- [ ] 可以输入持有金额。
+- [ ] 可以输入目前已有收益。
 - [ ] 可以编辑持仓。
 - [ ] 可以删除持仓。
 - [ ] 页面刷新后持仓保留。
@@ -1462,4 +1468,3 @@ Telegram Bot / Server酱 / PushPlus
 8. 所有 TypeScript 类型必须明确。
 9. 每个功能完成后需要保证 `npm run build` 成功。
 10. 修改代码后需要说明变更文件和验证方式。
-

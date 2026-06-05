@@ -9,7 +9,7 @@
 - [x] Step 5: 实现基金估值数据源
 - [x] Step 6: 实现 Dashboard 基金估值展示
 - [x] Step 7: 实现指数行情
-- [ ] Step 8: 实现持仓管理和盈亏计算
+- [x] Step 8: 实现持仓管理和盈亏计算
 - [ ] Step 9: 实现阈值提醒
 - [ ] Step 10: 实现设置页和导入导出
 - [ ] Step 11: 配置 GitHub Pages 部署
