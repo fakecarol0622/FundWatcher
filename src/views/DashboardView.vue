@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { Plus, Refresh, Warning } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowRight, Plus, Refresh, Warning } from "@element-plus/icons-vue";
 import { useFundStore } from "../stores/fundStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { A_SHARE_INDEXES, DEFAULT_INDEX_CODES, indexDataSource } from "../services/indexDataSource";
+import { DEFAULT_INDEX_CODES, DEFAULT_INDEXES, indexDataSource } from "../services/indexDataSource";
 import { formatDateTime, isAStockTradingTime } from "../services/timeService";
 import type { DataStatus, FundEstimate, FundItem } from "../types/fund";
 import type { IndexDefinition } from "../services/indexDataSource";
@@ -22,6 +22,12 @@ interface IndexQuoteRow {
   status: DataStatus;
 }
 
+interface IndexQuoteGroup {
+  key: IndexDefinition["market"];
+  title: string;
+  rows: IndexQuoteRow[];
+}
+
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
 
 const router = useRouter();
@@ -31,6 +37,12 @@ const settingsStore = useSettingsStore();
 const indexQuotes = ref<IndexQuote[]>([]);
 const isRefreshingIndexes = ref(false);
 const indexLastRefreshAt = ref<number | null>(null);
+const isIndexSectionExpanded = ref(true);
+const expandedIndexGroups = ref<Record<IndexDefinition["market"], boolean>>({
+  "a-share": true,
+  hk: true,
+  us: true,
+});
 
 let refreshTimer: number | undefined;
 
@@ -47,7 +59,7 @@ const estimateRows = computed<FundEstimateRow[]>(() =>
 );
 
 const indexRows = computed<IndexQuoteRow[]>(() =>
-  A_SHARE_INDEXES.map((definition) => {
+  DEFAULT_INDEXES.map((definition) => {
     const quote = indexQuotes.value.find((item) => item.code === definition.code);
 
     return {
@@ -57,6 +69,22 @@ const indexRows = computed<IndexQuoteRow[]>(() =>
     };
   }),
 );
+
+const indexGroups = computed<IndexQuoteGroup[]>(() => {
+  const groupTitles: Record<IndexDefinition["market"], string> = {
+    "a-share": "A 股指数",
+    hk: "港股指数",
+    us: "美股指数",
+  };
+
+  return (["a-share", "hk", "us"] as IndexDefinition["market"][])
+    .map((market) => ({
+      key: market,
+      title: groupTitles[market],
+      rows: indexRows.value.filter((row) => row.definition.market === market),
+    }))
+    .filter((group) => group.rows.length > 0);
+});
 
 const hasFunds = computed(() => fundStore.funds.length > 0);
 const hasEnabledFunds = computed(() => enabledFunds.value.length > 0);
@@ -168,6 +196,46 @@ function getAlias(fund: FundItem): string {
   return fund.alias?.trim() || "--";
 }
 
+function getRowsSummary(rows: IndexQuoteRow[]): string {
+  const availableRows = rows.filter((row) => row.quote && !row.quote.error);
+  const upCount = availableRows.filter((row) => (row.quote?.changePercent ?? 0) > 0).length;
+  const downCount = availableRows.filter((row) => (row.quote?.changePercent ?? 0) < 0).length;
+  const staleCount = rows.filter((row) => row.status === "stale").length;
+  const errorCount = rows.filter((row) => row.status === "error").length;
+
+  return `${availableRows.length}/${rows.length} 可用 · 涨 ${upCount} · 跌 ${downCount}${
+    staleCount > 0 ? ` · 过期 ${staleCount}` : ""
+  }${errorCount > 0 ? ` · 失败 ${errorCount}` : ""}`;
+}
+
+function getGroupLeadRow(rows: IndexQuoteRow[]): IndexQuoteRow | undefined {
+  return rows.find((row) => row.quote && !row.quote.error) ?? rows[0];
+}
+
+function getGroupSummary(group: IndexQuoteGroup): string {
+  const leadRow = getGroupLeadRow(group.rows);
+  if (!leadRow) {
+    return getRowsSummary(group.rows);
+  }
+
+  return `${getRowsSummary(group.rows)} · ${leadRow.definition.name} ${formatNumber(
+    leadRow.quote?.price,
+    2,
+  )} ${formatGrowth(leadRow.quote?.changePercent)}`;
+}
+
+function getIndexSectionSummary(): string {
+  return getRowsSummary(indexRows.value);
+}
+
+function toggleIndexSection(): void {
+  isIndexSectionExpanded.value = !isIndexSectionExpanded.value;
+}
+
+function toggleIndexGroup(key: IndexDefinition["market"]): void {
+  expandedIndexGroups.value[key] = !expandedIndexGroups.value[key];
+}
+
 async function refreshEstimates(): Promise<void> {
   if (!hasEnabledFunds.value || fundStore.isRefreshingEstimates) {
     return;
@@ -269,10 +337,19 @@ watch(
     <el-card shadow="never" class="index-card">
       <template #header>
         <div class="section-header">
-          <div>
-            <h2>指数行情</h2>
-            <span>最近刷新：{{ indexLastRefreshText }}</span>
-          </div>
+          <button class="collapse-title" type="button" @click="toggleIndexSection">
+            <el-icon>
+              <ArrowDown v-if="isIndexSectionExpanded" />
+              <ArrowRight v-else />
+            </el-icon>
+            <span>
+              <strong>指数行情</strong>
+              <small>
+                最近刷新：{{ indexLastRefreshText }}
+                <template v-if="!isIndexSectionExpanded"> · {{ getIndexSectionSummary() }}</template>
+              </small>
+            </span>
+          </button>
 
           <el-tag :type="isRefreshingIndexes ? 'primary' : 'info'" effect="light">
             {{ isRefreshingIndexes ? "刷新中" : "默认指数" }}
@@ -280,66 +357,82 @@ watch(
         </div>
       </template>
 
-      <div class="index-list">
-        <article
-          v-for="row in indexRows"
-          :key="row.definition.code"
-          class="quote-card"
-          :class="{ loading: row.status === 'loading' }"
-        >
-          <header class="quote-card-header">
-            <div class="quote-identity">
-              <strong>{{ row.quote?.name || row.definition.name }}</strong>
-              <span>{{ row.definition.code }}</span>
-            </div>
-
-            <el-tag :type="getStatusType(row.status)" effect="light">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </header>
-
-          <div class="quote-price">
-            <strong>{{ formatNumber(row.quote?.price, 2) }}</strong>
-            <span :class="getGrowthClass(row.quote?.changePercent)">
-              {{ formatSignedNumber(row.quote?.change, 2) }}
-              / {{ formatGrowth(row.quote?.changePercent) }}
+      <section v-if="isIndexSectionExpanded" class="index-groups">
+        <section v-for="group in indexGroups" :key="group.key" class="index-group">
+          <button class="group-header" type="button" @click="toggleIndexGroup(group.key)">
+            <span class="group-title">
+              <el-icon>
+                <ArrowDown v-if="expandedIndexGroups[group.key]" />
+                <ArrowRight v-else />
+              </el-icon>
+              <strong>{{ group.title }}</strong>
             </span>
+
+            <span class="group-summary">{{ getGroupSummary(group) }}</span>
+          </button>
+
+          <div v-if="expandedIndexGroups[group.key]" class="index-list">
+            <article
+              v-for="row in group.rows"
+              :key="row.definition.code"
+              class="quote-card"
+              :class="{ loading: row.status === 'loading' }"
+            >
+              <header class="quote-card-header">
+                <div class="quote-identity">
+                  <strong>{{ row.quote?.name || row.definition.name }}</strong>
+                  <span>{{ row.definition.code }}</span>
+                </div>
+
+                <el-tag :type="getStatusType(row.status)" effect="light">
+                  {{ getStatusText(row.status) }}
+                </el-tag>
+              </header>
+
+              <div class="quote-price">
+                <strong>{{ formatNumber(row.quote?.price, 2) }}</strong>
+                <span :class="getGrowthClass(row.quote?.changePercent)">
+                  {{ formatSignedNumber(row.quote?.change, 2) }}
+                  / {{ formatGrowth(row.quote?.changePercent) }}
+                </span>
+              </div>
+
+              <div class="field-grid quote-field-grid">
+                <div class="field">
+                  <span>昨收</span>
+                  <strong>{{ formatNumber(row.quote?.previousClose, 2) }}</strong>
+                </div>
+
+                <div class="field">
+                  <span>更新时间</span>
+                  <strong>{{ row.quote?.updateTime || "--" }}</strong>
+                </div>
+
+                <div class="field">
+                  <span>市场状态</span>
+                  <strong>{{ formatMarketStatus(row.quote?.marketStatus) }}</strong>
+                </div>
+
+                <div class="field">
+                  <span>数据源</span>
+                  <strong>{{ row.quote?.source || "--" }}</strong>
+                </div>
+              </div>
+
+              <footer v-if="row.quote?.error || row.status === 'stale'" class="estimate-message">
+                <el-icon><Warning /></el-icon>
+                <span>
+                  {{
+                    row.status === "stale"
+                      ? `正在展示上次成功缓存。${row.quote?.error || ""}`
+                      : row.quote?.error
+                  }}
+                </span>
+              </footer>
+            </article>
           </div>
-
-          <div class="field-grid quote-field-grid">
-            <div class="field">
-              <span>昨收</span>
-              <strong>{{ formatNumber(row.quote?.previousClose, 2) }}</strong>
-            </div>
-
-            <div class="field">
-              <span>更新时间</span>
-              <strong>{{ row.quote?.updateTime || "--" }}</strong>
-            </div>
-
-            <div class="field">
-              <span>市场状态</span>
-              <strong>{{ formatMarketStatus(row.quote?.marketStatus) }}</strong>
-            </div>
-
-            <div class="field">
-              <span>数据源</span>
-              <strong>{{ row.quote?.source || "--" }}</strong>
-            </div>
-          </div>
-
-          <footer v-if="row.quote?.error || row.status === 'stale'" class="estimate-message">
-            <el-icon><Warning /></el-icon>
-            <span>
-              {{
-                row.status === "stale"
-                  ? `正在展示上次成功缓存。${row.quote?.error || ""}`
-                  : row.quote?.error
-              }}
-            </span>
-          </footer>
-        </article>
-      </div>
+        </section>
+      </section>
     </el-card>
 
     <el-card shadow="never" class="summary-card">
@@ -472,22 +565,94 @@ watch(
   justify-content: space-between;
 }
 
-.section-header h2 {
+.collapse-title {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.collapse-title > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collapse-title strong {
   color: var(--el-text-color-primary);
   font-size: 18px;
   line-height: 1.2;
-  margin: 0 0 4px;
 }
 
-.section-header span {
+.collapse-title small {
   color: var(--el-text-color-secondary);
   font-size: 13px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .index-list {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.index-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.index-group {
+  display: grid;
+  gap: 10px;
+}
+
+.index-group + .index-group {
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding-top: 18px;
+}
+
+.group-header {
+  align-items: center;
+  appearance: none;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: space-between;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.group-title {
+  align-items: center;
+  color: var(--el-text-color-primary);
+  display: inline-flex;
+  font-size: 15px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.group-summary {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .estimate-list {
@@ -622,6 +787,7 @@ watch(
 
   .section-header {
     align-items: flex-start;
+    flex-direction: column;
   }
 
   .dashboard-header .el-button {
@@ -632,6 +798,14 @@ watch(
   .estimate-list,
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .group-header {
+    grid-template-columns: 1fr;
+  }
+
+  .group-summary {
+    text-align: left;
   }
 }
 </style>

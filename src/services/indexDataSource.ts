@@ -15,6 +15,7 @@ export interface IndexDefinition {
   name: string;
   symbol: string | null;
   market: "a-share" | "hk" | "us";
+  quoteFormat: "tencent-full" | null;
 }
 
 type IndexQuoteCache = Record<string, IndexQuote>;
@@ -24,20 +25,30 @@ const DATA_SOURCE_NAME = "腾讯行情脚本接口";
 const CACHE_KEY = STORAGE_KEYS.indexQuotesCache;
 
 export const A_SHARE_INDEXES: IndexDefinition[] = [
-  { code: "000001", name: "上证指数", symbol: "sh000001", market: "a-share" },
-  { code: "399001", name: "深证成指", symbol: "sz399001", market: "a-share" },
-  { code: "399006", name: "创业板指", symbol: "sz399006", market: "a-share" },
-  { code: "000300", name: "沪深300", symbol: "sh000300", market: "a-share" },
-  { code: "000905", name: "中证500", symbol: "sh000905", market: "a-share" },
+  { code: "000001", name: "上证指数", symbol: "sh000001", market: "a-share", quoteFormat: "tencent-full" },
+  { code: "399001", name: "深证成指", symbol: "sz399001", market: "a-share", quoteFormat: "tencent-full" },
+  { code: "399006", name: "创业板指", symbol: "sz399006", market: "a-share", quoteFormat: "tencent-full" },
+  { code: "000300", name: "沪深300", symbol: "sh000300", market: "a-share", quoteFormat: "tencent-full" },
+  { code: "000905", name: "中证500", symbol: "sh000905", market: "a-share", quoteFormat: "tencent-full" },
 ];
 
-export const RESERVED_OVERSEAS_INDEXES: IndexDefinition[] = [
-  { code: "HSI", name: "恒生指数", symbol: null, market: "hk" },
-  { code: "HSTECH", name: "恒生科技", symbol: null, market: "hk" },
-  { code: "NDX", name: "纳斯达克100", symbol: null, market: "us" },
+export const HK_INDEXES: IndexDefinition[] = [
+  { code: "HSI", name: "恒生指数", symbol: "hkHSI", market: "hk", quoteFormat: "tencent-full" },
+  { code: "HSTECH", name: "恒生科技", symbol: "hkHSTECH", market: "hk", quoteFormat: "tencent-full" },
 ];
 
-export const DEFAULT_INDEX_CODES = A_SHARE_INDEXES.map((index) => index.code);
+export const US_INDEXES: IndexDefinition[] = [
+  { code: "IXIC", name: "纳斯达克综合指数", symbol: "usIXIC", market: "us", quoteFormat: "tencent-full" },
+  { code: "NDX", name: "纳斯达克100", symbol: "usNDX", market: "us", quoteFormat: "tencent-full" },
+  { code: "SPX", name: "标普500", symbol: "usINX", market: "us", quoteFormat: "tencent-full" },
+  { code: "DJI", name: "道琼斯指数", symbol: "usDJI", market: "us", quoteFormat: "tencent-full" },
+  { code: "VIX", name: "VIX 恐慌指数", symbol: "usVIX", market: "us", quoteFormat: "tencent-full" },
+];
+
+export const RESERVED_OVERSEAS_INDEXES: IndexDefinition[] = [];
+
+export const DEFAULT_INDEXES = [...A_SHARE_INDEXES, ...HK_INDEXES, ...US_INDEXES];
+export const DEFAULT_INDEX_CODES = DEFAULT_INDEXES.map((index) => index.code);
 
 let scriptSequence = 0;
 
@@ -47,7 +58,7 @@ function normalizeCode(code: string): string {
 
 function getIndexDefinitions(): Map<string, IndexDefinition> {
   return new Map(
-    [...A_SHARE_INDEXES, ...RESERVED_OVERSEAS_INDEXES].map((definition) => [
+    [...DEFAULT_INDEXES, ...RESERVED_OVERSEAS_INDEXES].map((definition) => [
       normalizeCode(definition.code),
       definition,
     ]),
@@ -55,7 +66,15 @@ function getIndexDefinitions(): Map<string, IndexDefinition> {
 }
 
 function getCache(): IndexQuoteCache {
-  return getItem<IndexQuoteCache>(CACHE_KEY, {});
+  const cache = getItem<IndexQuoteCache>(CACHE_KEY, {});
+
+  if (cache.SPX?.error || cache.VIX?.name !== "VIX 恐慌指数") {
+    delete cache.SPX;
+    delete cache.VIX;
+    setItem(CACHE_KEY, cache);
+  }
+
+  return cache;
 }
 
 function getCachedQuote(code: string): IndexQuote | null {
@@ -111,12 +130,82 @@ function formatTencentDateTime(value: string | undefined): string {
   return `${year}-${month}-${day} ${hour}:${minute}`;
 }
 
-function getMarketStatus(definition: IndexDefinition): IndexMarketStatus {
-  if (definition.market !== "a-share") {
-    return "unknown";
+function getTimePartsInZone(now: Date, timeZone: string): {
+  weekday: number;
+  hour: number;
+  minute: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+
+  const weekdayText = parts.find((part) => part.type === "weekday")?.value ?? "";
+  const weekdays: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return {
+    weekday: weekdays[weekdayText] ?? -1,
+    hour: Number(parts.find((part) => part.type === "hour")?.value ?? 0),
+    minute: Number(parts.find((part) => part.type === "minute")?.value ?? 0),
+  };
+}
+
+function isUsRegularTradingTime(now = new Date()): boolean {
+  const { weekday, hour, minute } = getTimePartsInZone(now, "America/New_York");
+  if (weekday === 0 || weekday === 6 || weekday === -1) {
+    return false;
   }
 
-  return isAStockTradingTime() ? "open" : "closed";
+  const minutes = hour * 60 + minute;
+  const open = 9 * 60 + 30;
+  const close = 16 * 60;
+
+  return minutes >= open && minutes <= close;
+}
+
+function isHkRegularTradingTime(now = new Date()): boolean {
+  const { weekday, hour, minute } = getTimePartsInZone(now, "Asia/Hong_Kong");
+  if (weekday === 0 || weekday === 6 || weekday === -1) {
+    return false;
+  }
+
+  const minutes = hour * 60 + minute;
+  const morningOpen = 9 * 60 + 30;
+  const morningClose = 12 * 60;
+  const afternoonOpen = 13 * 60;
+  const afternoonClose = 16 * 60;
+
+  return (
+    (minutes >= morningOpen && minutes <= morningClose) ||
+    (minutes >= afternoonOpen && minutes <= afternoonClose)
+  );
+}
+
+function getMarketStatus(definition: IndexDefinition): IndexMarketStatus {
+  if (definition.market === "a-share") {
+    return isAStockTradingTime() ? "open" : "closed";
+  }
+
+  if (definition.market === "hk") {
+    return isHkRegularTradingTime() ? "open" : "closed";
+  }
+
+  if (definition.market === "us") {
+    return isUsRegularTradingTime() ? "open" : "closed";
+  }
+
+  return "unknown";
 }
 
 function buildEmptyQuote(definition: IndexDefinition, error: string): IndexQuote {
@@ -143,6 +232,7 @@ function buildErrorQuote(definition: IndexDefinition, error: string): IndexQuote
 
   return {
     ...cached,
+    name: definition.name,
     source: cached.source || DATA_SOURCE_NAME,
     error,
     stale: true,
@@ -150,11 +240,31 @@ function buildErrorQuote(definition: IndexDefinition, error: string): IndexQuote
   };
 }
 
-function parseTencentQuote(definition: IndexDefinition, rawValue: string | undefined): IndexQuote {
-  if (!rawValue) {
-    return buildErrorQuote(definition, "第三方接口未返回该指数行情。");
-  }
+function buildQuoteFromFields(
+  definition: IndexDefinition,
+  values: {
+    price: number | null;
+    change: number | null;
+    changePercent: number | null;
+    previousClose: number | null;
+    updateTime: string;
+    source?: string;
+  },
+): IndexQuote {
+  return {
+    code: definition.code,
+    name: definition.name,
+    price: values.price,
+    change: values.change,
+    changePercent: values.changePercent,
+    previousClose: values.previousClose,
+    updateTime: values.updateTime,
+    marketStatus: getMarketStatus(definition),
+    source: values.source ?? DATA_SOURCE_NAME,
+  };
+}
 
+function parseTencentFullQuote(definition: IndexDefinition, rawValue: string): IndexQuote {
   const fields = rawValue.split("~");
   const price = parseNullableNumber(fields[3]);
   const previousClose = parseNullableNumber(fields[4]);
@@ -169,21 +279,27 @@ function parseTencentQuote(definition: IndexDefinition, rawValue: string | undef
       ? Number(((change / previousClose) * 100).toFixed(2))
       : null);
 
-  if (price === null && change === null && changePercent === null) {
-    return buildErrorQuote(definition, "第三方接口返回的指数行情无效。");
-  }
-
-  return {
-    code: definition.code,
-    name: fields[1] || definition.name,
+  return buildQuoteFromFields(definition, {
     price,
     change,
     changePercent,
     previousClose,
     updateTime: formatTencentDateTime(fields[30]),
-    marketStatus: getMarketStatus(definition),
-    source: DATA_SOURCE_NAME,
-  };
+  });
+}
+
+function parseTencentQuote(definition: IndexDefinition, rawValue: string | undefined): IndexQuote {
+  if (!rawValue) {
+    return buildErrorQuote(definition, "第三方接口未返回该指数行情。");
+  }
+
+  const quote = parseTencentFullQuote(definition, rawValue);
+
+  if (quote.price === null && quote.change === null && quote.changePercent === null) {
+    return buildErrorQuote(definition, "第三方接口返回的指数行情无效。");
+  }
+
+  return quote;
 }
 
 function requestTencentScript(symbols: string[], timeoutMs: number): Promise<Record<string, string>> {
@@ -251,6 +367,7 @@ export function createIndexDataSource(options: IndexDataSourceOptions = {}): Ind
           name: code,
           symbol: null,
           market: "a-share" as const,
+          quoteFormat: null,
         };
       });
 
