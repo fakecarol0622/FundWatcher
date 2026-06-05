@@ -1,0 +1,287 @@
+import type { IndexMarketStatus, IndexQuote } from "../types/indexQuote";
+import { getItem, setItem, STORAGE_KEYS } from "./storageService";
+import { isAStockTradingTime } from "./timeService";
+
+export interface IndexDataSource {
+  getIndexQuotes(codes: string[]): Promise<IndexQuote[]>;
+}
+
+interface IndexDataSourceOptions {
+  timeoutMs?: number;
+}
+
+export interface IndexDefinition {
+  code: string;
+  name: string;
+  symbol: string | null;
+  market: "a-share" | "hk" | "us";
+}
+
+type IndexQuoteCache = Record<string, IndexQuote>;
+
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DATA_SOURCE_NAME = "腾讯行情脚本接口";
+const CACHE_KEY = STORAGE_KEYS.indexQuotesCache;
+
+export const A_SHARE_INDEXES: IndexDefinition[] = [
+  { code: "000001", name: "上证指数", symbol: "sh000001", market: "a-share" },
+  { code: "399001", name: "深证成指", symbol: "sz399001", market: "a-share" },
+  { code: "399006", name: "创业板指", symbol: "sz399006", market: "a-share" },
+  { code: "000300", name: "沪深300", symbol: "sh000300", market: "a-share" },
+  { code: "000905", name: "中证500", symbol: "sh000905", market: "a-share" },
+];
+
+export const RESERVED_OVERSEAS_INDEXES: IndexDefinition[] = [
+  { code: "HSI", name: "恒生指数", symbol: null, market: "hk" },
+  { code: "HSTECH", name: "恒生科技", symbol: null, market: "hk" },
+  { code: "NDX", name: "纳斯达克100", symbol: null, market: "us" },
+];
+
+export const DEFAULT_INDEX_CODES = A_SHARE_INDEXES.map((index) => index.code);
+
+let scriptSequence = 0;
+
+function normalizeCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+function getIndexDefinitions(): Map<string, IndexDefinition> {
+  return new Map(
+    [...A_SHARE_INDEXES, ...RESERVED_OVERSEAS_INDEXES].map((definition) => [
+      normalizeCode(definition.code),
+      definition,
+    ]),
+  );
+}
+
+function getCache(): IndexQuoteCache {
+  return getItem<IndexQuoteCache>(CACHE_KEY, {});
+}
+
+function getCachedQuote(code: string): IndexQuote | null {
+  return getCache()[normalizeCode(code)] ?? null;
+}
+
+function setCachedQuotes(quotes: IndexQuote[]): void {
+  const cache = getCache();
+  const now = Date.now();
+
+  quotes.forEach((quote) => {
+    if (quote.error || quote.stale) {
+      return;
+    }
+
+    cache[normalizeCode(quote.code)] = {
+      ...quote,
+      error: undefined,
+      stale: false,
+      cachedAt: now,
+    };
+  });
+
+  setItem(CACHE_KEY, cache);
+}
+
+function parseNullableNumber(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatTencentDateTime(value: string | undefined): string {
+  if (!value || !/^\d{14}$/.test(value)) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(Date.now());
+  }
+
+  const year = value.slice(0, 4);
+  const month = value.slice(4, 6);
+  const day = value.slice(6, 8);
+  const hour = value.slice(8, 10);
+  const minute = value.slice(10, 12);
+
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function getMarketStatus(definition: IndexDefinition): IndexMarketStatus {
+  if (definition.market !== "a-share") {
+    return "unknown";
+  }
+
+  return isAStockTradingTime() ? "open" : "closed";
+}
+
+function buildEmptyQuote(definition: IndexDefinition, error: string): IndexQuote {
+  return {
+    code: definition.code,
+    name: definition.name,
+    price: null,
+    change: null,
+    changePercent: null,
+    previousClose: null,
+    updateTime: null,
+    marketStatus: getMarketStatus(definition),
+    source: DATA_SOURCE_NAME,
+    error,
+  };
+}
+
+function buildErrorQuote(definition: IndexDefinition, error: string): IndexQuote {
+  const cached = getCachedQuote(definition.code);
+
+  if (!cached) {
+    return buildEmptyQuote(definition, error);
+  }
+
+  return {
+    ...cached,
+    source: cached.source || DATA_SOURCE_NAME,
+    error,
+    stale: true,
+    cachedAt: cached.cachedAt ?? Date.now(),
+  };
+}
+
+function parseTencentQuote(definition: IndexDefinition, rawValue: string | undefined): IndexQuote {
+  if (!rawValue) {
+    return buildErrorQuote(definition, "第三方接口未返回该指数行情。");
+  }
+
+  const fields = rawValue.split("~");
+  const price = parseNullableNumber(fields[3]);
+  const previousClose = parseNullableNumber(fields[4]);
+  const parsedChange = parseNullableNumber(fields[31]);
+  const change =
+    parsedChange ??
+    (price !== null && previousClose !== null ? Number((price - previousClose).toFixed(2)) : null);
+  const parsedChangePercent = parseNullableNumber(fields[32]);
+  const changePercent =
+    parsedChangePercent ??
+    (change !== null && previousClose !== null && previousClose !== 0
+      ? Number(((change / previousClose) * 100).toFixed(2))
+      : null);
+
+  if (price === null && change === null && changePercent === null) {
+    return buildErrorQuote(definition, "第三方接口返回的指数行情无效。");
+  }
+
+  return {
+    code: definition.code,
+    name: fields[1] || definition.name,
+    price,
+    change,
+    changePercent,
+    previousClose,
+    updateTime: formatTencentDateTime(fields[30]),
+    marketStatus: getMarketStatus(definition),
+    source: DATA_SOURCE_NAME,
+  };
+}
+
+function requestTencentScript(symbols: string[], timeoutMs: number): Promise<Record<string, string>> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      reject(new Error("指数行情脚本接口只能在浏览器环境中运行。"));
+      return;
+    }
+
+    const requestSymbols = symbols.join(",");
+    const script = document.createElement("script");
+    const scriptId = scriptSequence;
+    scriptSequence += 1;
+
+    const cleanup = () => {
+      script.remove();
+    };
+
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`指数行情请求超时：${timeoutMs}ms。`));
+    }, timeoutMs);
+
+    script.onload = () => {
+      window.clearTimeout(timer);
+      cleanup();
+
+      const result: Record<string, string> = {};
+      const globalWindow = window as unknown as Record<string, unknown>;
+
+      symbols.forEach((symbol) => {
+        const key = `v_${symbol}`;
+        const value = globalWindow[key];
+        if (typeof value === "string") {
+          result[symbol] = value;
+        }
+      });
+
+      resolve(result);
+    };
+
+    script.onerror = () => {
+      window.clearTimeout(timer);
+      cleanup();
+      reject(new Error("指数行情脚本加载失败。"));
+    };
+
+    // Non-official data source: Tencent Finance quote script endpoint.
+    // It is isolated here so the UI can switch data sources without changing components.
+    script.src = `https://qt.gtimg.cn/q=${encodeURIComponent(requestSymbols)}&_=${Date.now()}_${scriptId}`;
+    document.head.appendChild(script);
+  });
+}
+
+export function createIndexDataSource(options: IndexDataSourceOptions = {}): IndexDataSource {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const definitions = getIndexDefinitions();
+
+  return {
+    async getIndexQuotes(rawCodes: string[]): Promise<IndexQuote[]> {
+      const requestedDefinitions = rawCodes.map((rawCode) => {
+        const code = normalizeCode(rawCode);
+        return definitions.get(code) ?? {
+          code,
+          name: code,
+          symbol: null,
+          market: "a-share" as const,
+        };
+      });
+
+      const implementedDefinitions = requestedDefinitions.filter((definition) => definition.symbol);
+      const reservedQuotes = requestedDefinitions
+        .filter((definition) => !definition.symbol)
+        .map((definition) => buildErrorQuote(definition, "该指数数据源暂未实现。"));
+
+      if (implementedDefinitions.length === 0) {
+        return reservedQuotes;
+      }
+
+      try {
+        const symbols = implementedDefinitions.map((definition) => definition.symbol as string);
+        const payload = await requestTencentScript(symbols, timeoutMs);
+        const fetchedQuotes = implementedDefinitions.map((definition) =>
+          parseTencentQuote(definition, payload[definition.symbol as string]),
+        );
+
+        setCachedQuotes(fetchedQuotes);
+        return [...fetchedQuotes, ...reservedQuotes];
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "指数行情接口请求失败。";
+        const errorQuotes = implementedDefinitions.map((definition) =>
+          buildErrorQuote(definition, message),
+        );
+
+        return [...errorQuotes, ...reservedQuotes];
+      }
+    },
+  };
+}
+
+export const indexDataSource = createIndexDataSource();

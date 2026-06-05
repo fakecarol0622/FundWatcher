@@ -7,8 +7,8 @@
 - [x] Step 3: 实现 Pinia stores
 - [x] Step 4: 实现自选基金管理
 - [x] Step 5: 实现基金估值数据源
-- [ ] Step 6: 实现 Dashboard 基金估值展示
-- [ ] Step 7: 实现指数行情
+- [x] Step 6: 实现 Dashboard 基金估值展示
+- [x] Step 7: 实现指数行情
 - [ ] Step 8: 实现持仓管理和盈亏计算
 - [ ] Step 9: 实现阈值提醒
 - [ ] Step 10: 实现设置页和导入导出
