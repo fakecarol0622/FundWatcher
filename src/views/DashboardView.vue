@@ -16,3 +16,26 @@
   font-weight: 600;
 }
 </style>
+<script setup lang="ts">
+import { onMounted, onUnmounted } from "vue";
+import { debugGetFundEstimate } from "../services/fundDataSource";
+
+declare global {
+  interface Window {
+    __debugFundEstimate?: typeof debugGetFundEstimate;
+  }
+}
+
+onMounted(() => {
+  if (import.meta.env.DEV) {
+    window.__debugFundEstimate = debugGetFundEstimate;
+    console.info("[fundDataSource] Run window.__debugFundEstimate('161725') to debug fund estimates.");
+  }
+});
+
+onUnmounted(() => {
+  if (window.__debugFundEstimate === debugGetFundEstimate) {
+    delete window.__debugFundEstimate;
+  }
+});
+</script>
