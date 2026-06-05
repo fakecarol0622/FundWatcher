@@ -1,30 +1,54 @@
-﻿<script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { applyTheme, listenToSystemThemeChange } from "./services/themeService";
+import { useSettingsStore } from "./stores/settingsStore";
 
 interface NavItem {
-  label: string
-  path: string
+  label: string;
+  path: string;
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', path: '/' },
-  { label: 'Funds', path: '/funds' },
-  { label: 'Holdings', path: '/holdings' },
-  { label: 'Alerts', path: '/alerts' },
-  { label: 'Settings', path: '/settings' }
-]
+  { label: "Dashboard", path: "/" },
+  { label: "Funds", path: "/funds" },
+  { label: "Holdings", path: "/holdings" },
+  { label: "Alerts", path: "/alerts" },
+  { label: "Settings", path: "/settings" },
+];
 
-const route = useRoute()
-const router = useRouter()
+const route = useRoute();
+const router = useRouter();
+const settingsStore = useSettingsStore();
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => route.path);
+let stopThemeListener: (() => void) | undefined;
 
 const handleMenuSelect = (index: string) => {
   if (index !== route.path) {
-    router.push(index)
+    router.push(index);
   }
-}
+};
+
+watch(
+  () => settingsStore.theme,
+  (theme) => {
+    applyTheme(theme);
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  settingsStore.loadFromStorage();
+  applyTheme(settingsStore.theme);
+  stopThemeListener = listenToSystemThemeChange(() => {
+    applyTheme(settingsStore.theme);
+  });
+});
+
+onUnmounted(() => {
+  stopThemeListener?.();
+});
 </script>
 
 <template>
@@ -51,11 +75,13 @@ const handleMenuSelect = (index: string) => {
 
 <style scoped>
 .app-layout {
+  background: var(--app-page-bg);
   min-height: 100vh;
 }
 
 .app-header {
   align-items: center;
+  background: var(--app-surface-bg);
   border-bottom: 1px solid var(--el-border-color);
   display: flex;
   gap: 24px;
@@ -70,7 +96,9 @@ const handleMenuSelect = (index: string) => {
 }
 
 .app-main {
-  background: var(--el-fill-color-light);
+  background:
+    radial-gradient(circle at top left, var(--app-surface-accent), transparent 32%),
+    var(--app-page-bg);
   padding: 24px;
 }
 

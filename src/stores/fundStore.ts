@@ -218,6 +218,24 @@ export const useFundStore = defineStore("fund", {
     loadFromStorage(): void {
       this.funds = getItem<FundItem[]>(STORAGE_KEYS.funds, []);
       this.estimates = getItem<FundEstimateMap>(STORAGE_KEYS.fundEstimatesCache, {});
+      this.estimateStatuses = {};
+    },
+
+    replaceFunds(funds: FundItem[]): void {
+      this.funds = [...funds];
+      this.estimates = {};
+      this.estimateStatuses = {};
+      this.lastRefreshAt = null;
+      this.saveToStorage();
+    },
+
+    resetState(): void {
+      this.funds = [];
+      this.estimates = {};
+      this.estimateStatuses = {};
+      this.isRefreshingEstimates = false;
+      this.lastRefreshAt = null;
+      this.saveToStorage();
     },
 
     saveToStorage(): void {

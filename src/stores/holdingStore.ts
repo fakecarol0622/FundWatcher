@@ -207,6 +207,16 @@ export const useHoldingStore = defineStore("holding", {
       this.holdings = getItem<Holding[]>(STORAGE_KEYS.holdings, []);
     },
 
+    replaceHoldings(holdings: Holding[]): void {
+      this.holdings = [...holdings];
+      this.saveToStorage();
+    },
+
+    resetState(): void {
+      this.holdings = [];
+      this.saveToStorage();
+    },
+
     saveToStorage(): void {
       setItem(STORAGE_KEYS.holdings, this.holdings);
     },

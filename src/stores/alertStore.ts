@@ -55,6 +55,16 @@ export const useAlertStore = defineStore("alert", {
       this.alertRecords = getItem<AlertRecord[]>(STORAGE_KEYS.alerts, []);
     },
 
+    replaceAlerts(alerts: AlertRecord[]): void {
+      this.alertRecords = [...alerts].sort((left, right) => right.triggeredAt - left.triggeredAt);
+      this.saveToStorage();
+    },
+
+    resetState(): void {
+      this.alertRecords = [];
+      this.saveToStorage();
+    },
+
     saveToStorage(): void {
       setItem(STORAGE_KEYS.alerts, this.alertRecords);
     },

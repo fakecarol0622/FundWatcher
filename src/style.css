@@ -1,16 +1,32 @@
-﻿:root {
+:root {
   color: #1f2329;
   font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   line-height: 1.5;
+  background: #f3f5f8;
+  color-scheme: light;
+  --app-page-bg: #f3f5f8;
+  --app-surface-bg: rgba(255, 255, 255, 0.92);
+  --app-surface-accent: rgba(71, 132, 255, 0.12);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html.dark {
+  background: #111827;
+  color-scheme: dark;
+  --app-page-bg: #111827;
+  --app-surface-bg: rgba(17, 24, 39, 0.92);
+  --app-surface-accent: rgba(56, 189, 248, 0.12);
+}
+
 body {
+  background: var(--app-page-bg);
+  color: var(--el-text-color-primary);
   margin: 0;
   min-width: 375px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 #app {
