@@ -25,10 +25,40 @@ body {
   background: var(--app-page-bg);
   color: var(--el-text-color-primary);
   margin: 0;
-  min-width: 375px;
+  min-width: 320px;
   transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #app {
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ── Mobile global tweaks ── */
+@media (max-width: 480px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+/* Ensure all interactive elements have adequate tap targets on touch devices */
+@media (pointer: coarse) {
+  .el-button:not(.is-circle) {
+    min-height: 44px;
+  }
+
+  .el-button.is-circle {
+    min-height: 0;
+  }
+
+  .el-switch,
+  .el-checkbox,
+  .el-radio {
+    min-height: 44px;
+  }
+
+  .el-switch {
+    min-height: 32px;
+  }
 }

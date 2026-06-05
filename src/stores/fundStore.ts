@@ -53,17 +53,21 @@ export const useFundStore = defineStore("fund", {
       const code = fundInput.code.trim();
       const cachedEstimate = this.estimates[code];
 
-      if (!isValidFundCode(code) || this.funds.some((fund) => fund.code === code)) {
+      if (
+        !isValidFundCode(code) ||
+        this.funds.some((fund) => fund.code === code)
+      ) {
         return null;
       }
 
       const fund: FundItem = {
         code,
         name: fundInput.name || cachedEstimate?.name || undefined,
-        alias: fundInput.alias,
         enabled: fundInput.enabled ?? true,
-        thresholdUp: fundInput.thresholdUp ?? defaultSettings.defaultThresholdUp,
-        thresholdDown: fundInput.thresholdDown ?? defaultSettings.defaultThresholdDown,
+        thresholdUp:
+          fundInput.thresholdUp ?? defaultSettings.defaultThresholdUp,
+        thresholdDown:
+          fundInput.thresholdDown ?? defaultSettings.defaultThresholdDown,
         createdAt: now,
         updatedAt: now,
       };
@@ -143,7 +147,8 @@ export const useFundStore = defineStore("fund", {
         this.lastRefreshAt = Date.now();
         return estimate;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "基金估值刷新失败。";
+        const message =
+          error instanceof Error ? error.message : "基金估值刷新失败。";
         console.error("[fundStore] Failed to refresh a fund estimate.", error);
 
         const cachedEstimate = this.estimates[normalizedCode];
@@ -156,7 +161,10 @@ export const useFundStore = defineStore("fund", {
           };
           this.estimateStatuses[normalizedCode] = "stale";
         } else {
-          this.estimates[normalizedCode] = buildErrorEstimate(normalizedCode, message);
+          this.estimates[normalizedCode] = buildErrorEstimate(
+            normalizedCode,
+            message,
+          );
           this.estimateStatuses[normalizedCode] = "error";
         }
 
@@ -189,7 +197,8 @@ export const useFundStore = defineStore("fund", {
               : "success";
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "基金估值刷新失败。";
+        const message =
+          error instanceof Error ? error.message : "基金估值刷新失败。";
         console.error("[fundStore] Failed to refresh fund estimates.", error);
 
         codes.forEach((code) => {
@@ -217,7 +226,10 @@ export const useFundStore = defineStore("fund", {
 
     loadFromStorage(): void {
       this.funds = getItem<FundItem[]>(STORAGE_KEYS.funds, []);
-      this.estimates = getItem<FundEstimateMap>(STORAGE_KEYS.fundEstimatesCache, {});
+      this.estimates = getItem<FundEstimateMap>(
+        STORAGE_KEYS.fundEstimatesCache,
+        {},
+      );
       this.estimateStatuses = {};
     },
 

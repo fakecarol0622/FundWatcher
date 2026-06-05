@@ -6,39 +6,23 @@ export interface FundNavDisplay {
   usingOfficialNav: boolean;
 }
 
-function getDatePart(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const matched = value.match(/^(\d{4}-\d{2}-\d{2})/);
-  return matched?.[1] ?? null;
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
-export function shouldPreferOfficialNav(estimate: FundEstimate | null | undefined): boolean {
+export function shouldPreferOfficialNav(
+  estimate: FundEstimate | null | undefined,
+): boolean {
   if (!estimate || estimate.nav === null) {
     return false;
   }
 
-  if (estimate.estimatedNav === null) {
-    return true;
-  }
-
-  const navDate = getDatePart(estimate.navDate);
-  const estimateDate = getDatePart(estimate.estimateTime);
-
-  if (!navDate) {
-    return false;
-  }
-
-  if (!estimateDate) {
-    return true;
-  }
-
-  return navDate >= estimateDate;
+  return !isFiniteNumber(estimate.estimatedNav);
 }
 
-export function getFundNavDisplay(estimate: FundEstimate | null | undefined): FundNavDisplay {
+export function getFundNavDisplay(
+  estimate: FundEstimate | null | undefined,
+): FundNavDisplay {
   if (shouldPreferOfficialNav(estimate)) {
     return {
       label: "最新净值",

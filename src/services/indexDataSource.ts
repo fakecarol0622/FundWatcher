@@ -14,14 +14,20 @@ export interface IndexDefinition {
   code: string;
   name: string;
   symbol: string | null;
-  market: "a-share" | "hk" | "us";
-  quoteFormat: "tencent-full" | null;
+  market: "a-share" | "hk" | "us" | "commodity";
+  quoteFormat: "tencent-full" | "tencent-hf" | "eastmoney-quote" | null;
 }
 
 type IndexQuoteCache = Record<string, IndexQuote>;
 
+interface EastmoneyQuoteResponse {
+  rc?: number;
+  data?: Record<string, unknown> | null;
+}
+
 const DEFAULT_TIMEOUT_MS = 10_000;
-const DATA_SOURCE_NAME = "腾讯行情脚本接口";
+const TENCENT_SOURCE_NAME = "腾讯行情脚本接口";
+const EASTMONEY_SOURCE_NAME = "东方财富行情接口";
 const CACHE_KEY = STORAGE_KEYS.indexQuotesCache;
 
 export const A_SHARE_INDEXES: IndexDefinition[] = [
@@ -42,12 +48,22 @@ export const US_INDEXES: IndexDefinition[] = [
   { code: "NDX", name: "纳斯达克100", symbol: "usNDX", market: "us", quoteFormat: "tencent-full" },
   { code: "SPX", name: "标普500", symbol: "usINX", market: "us", quoteFormat: "tencent-full" },
   { code: "DJI", name: "道琼斯指数", symbol: "usDJI", market: "us", quoteFormat: "tencent-full" },
-  { code: "VIX", name: "VIX 恐慌指数", symbol: "usVIX", market: "us", quoteFormat: "tencent-full" },
+];
+
+export const COMMODITY_INDEXES: IndexDefinition[] = [
+  { code: "AU9999", name: "黄金9999（AU9999）", symbol: "118.AU9999", market: "commodity", quoteFormat: "eastmoney-quote" },
+  { code: "XAU", name: "伦敦金（现货黄金）", symbol: "hf_XAU", market: "commodity", quoteFormat: "tencent-hf" },
+  { code: "XAG", name: "伦敦银（现货白银）", symbol: "hf_XAG", market: "commodity", quoteFormat: "tencent-hf" },
 ];
 
 export const RESERVED_OVERSEAS_INDEXES: IndexDefinition[] = [];
 
-export const DEFAULT_INDEXES = [...A_SHARE_INDEXES, ...HK_INDEXES, ...US_INDEXES];
+export const DEFAULT_INDEXES = [
+  ...A_SHARE_INDEXES,
+  ...HK_INDEXES,
+  ...US_INDEXES,
+  ...COMMODITY_INDEXES,
+];
 export const DEFAULT_INDEX_CODES = DEFAULT_INDEXES.map((index) => index.code);
 
 let scriptSequence = 0;
@@ -68,9 +84,8 @@ function getIndexDefinitions(): Map<string, IndexDefinition> {
 function getCache(): IndexQuoteCache {
   const cache = getItem<IndexQuoteCache>(CACHE_KEY, {});
 
-  if (cache.SPX?.error || cache.VIX?.name !== "VIX 恐慌指数") {
+  if (cache.SPX?.error) {
     delete cache.SPX;
-    delete cache.VIX;
     setItem(CACHE_KEY, cache);
   }
 
@@ -110,6 +125,17 @@ function parseNullableNumber(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseScaledEastmoneyNumber(
+  value: unknown,
+  scale = 100,
+): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Number((value / scale).toFixed(2));
+}
+
 function formatTencentDateTime(value: string | undefined): string {
   if (!value || !/^\d{14}$/.test(value)) {
     return new Intl.DateTimeFormat("zh-CN", {
@@ -126,6 +152,44 @@ function formatTencentDateTime(value: string | undefined): string {
   const day = value.slice(6, 8);
   const hour = value.slice(8, 10);
   const minute = value.slice(10, 12);
+
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function formatTencentHfDateTime(
+  date: string | undefined,
+  time: string | undefined,
+): string {
+  if (!date || !time) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(Date.now());
+  }
+
+  return `${date} ${time.slice(0, 5)}`;
+}
+
+function formatUnixSecondsDateTime(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(Date.now());
+  }
+
+  const date = new Date(value * 1000);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
 
   return `${year}-${month}-${day} ${hour}:${minute}`;
 }
@@ -192,6 +256,27 @@ function isHkRegularTradingTime(now = new Date()): boolean {
   );
 }
 
+function isGlobalCommodityTradingTime(now = new Date()): boolean {
+  const weekday = now.getUTCDay();
+  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const dailyBreakStart = 21 * 60;
+  const dailyBreakEnd = 22 * 60;
+
+  if (weekday === 6) {
+    return false;
+  }
+
+  if (weekday === 0) {
+    return minutes >= dailyBreakEnd;
+  }
+
+  if (weekday === 5) {
+    return minutes < dailyBreakStart;
+  }
+
+  return minutes < dailyBreakStart || minutes >= dailyBreakEnd;
+}
+
 function getMarketStatus(definition: IndexDefinition): IndexMarketStatus {
   if (definition.market === "a-share") {
     return isAStockTradingTime() ? "open" : "closed";
@@ -203,6 +288,10 @@ function getMarketStatus(definition: IndexDefinition): IndexMarketStatus {
 
   if (definition.market === "us") {
     return isUsRegularTradingTime() ? "open" : "closed";
+  }
+
+  if (definition.market === "commodity") {
+    return isGlobalCommodityTradingTime() ? "open" : "closed";
   }
 
   return "unknown";
@@ -218,7 +307,7 @@ function buildEmptyQuote(definition: IndexDefinition, error: string): IndexQuote
     previousClose: null,
     updateTime: null,
     marketStatus: getMarketStatus(definition),
-    source: DATA_SOURCE_NAME,
+    source: TENCENT_SOURCE_NAME,
     error,
   };
 }
@@ -233,7 +322,7 @@ function buildErrorQuote(definition: IndexDefinition, error: string): IndexQuote
   return {
     ...cached,
     name: definition.name,
-    source: cached.source || DATA_SOURCE_NAME,
+    source: cached.source || TENCENT_SOURCE_NAME,
     error,
     stale: true,
     cachedAt: cached.cachedAt ?? Date.now(),
@@ -260,7 +349,7 @@ function buildQuoteFromFields(
     previousClose: values.previousClose,
     updateTime: values.updateTime,
     marketStatus: getMarketStatus(definition),
-    source: values.source ?? DATA_SOURCE_NAME,
+    source: values.source ?? TENCENT_SOURCE_NAME,
   };
 }
 
@@ -288,18 +377,109 @@ function parseTencentFullQuote(definition: IndexDefinition, rawValue: string): I
   });
 }
 
-function parseTencentQuote(definition: IndexDefinition, rawValue: string | undefined): IndexQuote {
-  if (!rawValue) {
-    return buildErrorQuote(definition, "第三方接口未返回该指数行情。");
+function parseTencentHfQuote(definition: IndexDefinition, rawValue: string): IndexQuote {
+  const fields = rawValue.split(",");
+  const price = parseNullableNumber(fields[0]);
+  const changePercent = parseNullableNumber(fields[1]);
+  const previousClose = parseNullableNumber(fields[7]);
+  const change =
+    price !== null && previousClose !== null
+      ? Number((price - previousClose).toFixed(2))
+      : null;
+
+  return buildQuoteFromFields(definition, {
+    price,
+    change,
+    changePercent,
+    previousClose,
+    updateTime: formatTencentHfDateTime(fields[12], fields[6]),
+  });
+}
+
+function parseEastmoneyQuote(
+  definition: IndexDefinition,
+  data: Record<string, unknown> | null | undefined,
+): IndexQuote {
+  if (!data) {
+    return buildErrorQuote(definition, "东方财富接口未返回该行情。");
   }
 
-  const quote = parseTencentFullQuote(definition, rawValue);
+  const price = parseScaledEastmoneyNumber(data.f43);
+  const previousClose = parseScaledEastmoneyNumber(data.f60);
+  const change = parseScaledEastmoneyNumber(data.f169);
+  const changePercent = parseScaledEastmoneyNumber(data.f170);
+
+  return buildQuoteFromFields(definition, {
+    price,
+    change,
+    changePercent,
+    previousClose,
+    updateTime: formatUnixSecondsDateTime(data.f86),
+    source: EASTMONEY_SOURCE_NAME,
+  });
+}
+
+function parseTencentQuote(definition: IndexDefinition, rawValue: string | undefined): IndexQuote {
+  if (!rawValue) {
+    return buildErrorQuote(definition, "第三方接口未返回该行情。");
+  }
+
+  const quote =
+    definition.quoteFormat === "tencent-hf"
+      ? parseTencentHfQuote(definition, rawValue)
+      : parseTencentFullQuote(definition, rawValue);
 
   if (quote.price === null && quote.change === null && quote.changePercent === null) {
-    return buildErrorQuote(definition, "第三方接口返回的指数行情无效。");
+    return buildErrorQuote(definition, "第三方接口返回的行情无效。");
   }
 
   return quote;
+}
+
+async function requestEastmoneyQuote(
+  definition: IndexDefinition,
+  timeoutMs: number,
+): Promise<IndexQuote> {
+  if (!definition.symbol) {
+    return buildErrorQuote(definition, "该行情数据源暂未实现。");
+  }
+
+  if (typeof fetch === "undefined" || typeof AbortController === "undefined") {
+    return buildErrorQuote(definition, "东方财富行情接口只能在浏览器环境中运行。");
+  }
+
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const fields = "f43,f57,f58,f60,f86,f169,f170";
+    const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${encodeURIComponent(
+      definition.symbol,
+    )}&fields=${fields}`;
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      return buildErrorQuote(definition, `东方财富行情请求失败：${response.status}。`);
+    }
+
+    const payload = (await response.json()) as EastmoneyQuoteResponse;
+    if (payload.rc !== 0) {
+      return buildErrorQuote(definition, "东方财富接口返回的行情无效。");
+    }
+
+    const quote = parseEastmoneyQuote(definition, payload.data);
+    if (quote.price === null && quote.change === null && quote.changePercent === null) {
+      return buildErrorQuote(definition, "东方财富接口返回的行情无效。");
+    }
+
+    return quote;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "东方财富行情接口请求失败。";
+    return buildErrorQuote(definition, message);
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
 }
 
 function requestTencentScript(symbols: string[], timeoutMs: number): Promise<Record<string, string>> {
@@ -372,6 +552,12 @@ export function createIndexDataSource(options: IndexDataSourceOptions = {}): Ind
       });
 
       const implementedDefinitions = requestedDefinitions.filter((definition) => definition.symbol);
+      const tencentDefinitions = implementedDefinitions.filter(
+        (definition) => definition.quoteFormat !== "eastmoney-quote",
+      );
+      const eastmoneyDefinitions = implementedDefinitions.filter(
+        (definition) => definition.quoteFormat === "eastmoney-quote",
+      );
       const reservedQuotes = requestedDefinitions
         .filter((definition) => !definition.symbol)
         .map((definition) => buildErrorQuote(definition, "该指数数据源暂未实现。"));
@@ -380,23 +566,31 @@ export function createIndexDataSource(options: IndexDataSourceOptions = {}): Ind
         return reservedQuotes;
       }
 
-      try {
-        const symbols = implementedDefinitions.map((definition) => definition.symbol as string);
-        const payload = await requestTencentScript(symbols, timeoutMs);
-        const fetchedQuotes = implementedDefinitions.map((definition) =>
-          parseTencentQuote(definition, payload[definition.symbol as string]),
-        );
-
-        setCachedQuotes(fetchedQuotes);
-        return [...fetchedQuotes, ...reservedQuotes];
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "指数行情接口请求失败。";
-        const errorQuotes = implementedDefinitions.map((definition) =>
-          buildErrorQuote(definition, message),
-        );
-
-        return [...errorQuotes, ...reservedQuotes];
+      let tencentQuotes: IndexQuote[] = [];
+      if (tencentDefinitions.length > 0) {
+        try {
+          const symbols = tencentDefinitions.map((definition) => definition.symbol as string);
+          const payload = await requestTencentScript(symbols, timeoutMs);
+          tencentQuotes = tencentDefinitions.map((definition) =>
+            parseTencentQuote(definition, payload[definition.symbol as string]),
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "指数行情接口请求失败。";
+          tencentQuotes = tencentDefinitions.map((definition) =>
+            buildErrorQuote(definition, message),
+          );
+        }
       }
+
+      const eastmoneyQuotes = await Promise.all(
+        eastmoneyDefinitions.map((definition) =>
+          requestEastmoneyQuote(definition, timeoutMs),
+        ),
+      );
+      const fetchedQuotes = [...tencentQuotes, ...eastmoneyQuotes];
+
+      setCachedQuotes(fetchedQuotes);
+      return [...fetchedQuotes, ...reservedQuotes];
     },
   };
 }
