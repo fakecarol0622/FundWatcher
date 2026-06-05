@@ -12,7 +12,7 @@
 - [x] Step 8: 实现持仓管理和盈亏计算
 - [x] Step 9: 实现阈值提醒
 - [x] Step 10: 实现设置页和导入导出
-- [ ] Step 11: 配置 GitHub Pages 部署
+- [x] Step 11: 配置 GitHub Pages 部署
 
 ## Phase 2
 
@@ -23,3 +23,4 @@
 
 - [ ] AI 持仓分析
 - [ ] 单基金 AI 分析
+
