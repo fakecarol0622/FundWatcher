@@ -1,14 +1,24 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ArrowDown, ArrowRight, Plus, Refresh, Warning } from "@element-plus/icons-vue";
+import {
+  ArrowDown,
+  ArrowRight,
+  Plus,
+  Refresh,
+  Warning,
+} from "@element-plus/icons-vue";
 import { checkFundAlerts } from "../services/alertService";
 import { getFundNavDisplay } from "../services/fundValueService";
 import { useAlertStore } from "../stores/alertStore";
 import { useFundStore } from "../stores/fundStore";
 import { useHoldingStore } from "../stores/holdingStore";
 import { useSettingsStore } from "../stores/settingsStore";
-import { DEFAULT_INDEX_CODES, DEFAULT_INDEXES, indexDataSource } from "../services/indexDataSource";
+import {
+  DEFAULT_INDEX_CODES,
+  DEFAULT_INDEXES,
+  indexDataSource,
+} from "../services/indexDataSource";
 import { formatDateTime, isAStockTradingTime } from "../services/timeService";
 import type { IndexDefinition } from "../services/indexDataSource";
 import type { FundEstimate, FundItem, DataStatus } from "../types/fund";
@@ -73,6 +83,7 @@ const expandedIndexGroups = ref<Record<IndexDefinition["market"], boolean>>({
   "a-share": true,
   hk: true,
   us: true,
+  commodity: true,
 });
 
 const fundSortOptions: Array<{ label: string; value: DashboardSortField }> = [
@@ -87,7 +98,9 @@ const fundSortOptions: Array<{ label: string; value: DashboardSortField }> = [
 let refreshTimer: number | undefined;
 
 const enabledFunds = computed(() =>
-  [...fundStore.enabledFunds].sort((left, right) => right.createdAt - left.createdAt),
+  [...fundStore.enabledFunds].sort(
+    (left, right) => right.createdAt - left.createdAt,
+  ),
 );
 
 const estimateRows = computed<FundEstimateRow[]>(() =>
@@ -100,7 +113,9 @@ const estimateRows = computed<FundEstimateRow[]>(() =>
 
 const indexRows = computed<IndexQuoteRow[]>(() =>
   DEFAULT_INDEXES.map((definition) => {
-    const quote = indexQuotes.value.find((item) => item.code === definition.code);
+    const quote = indexQuotes.value.find(
+      (item) => item.code === definition.code,
+    );
 
     return {
       definition,
@@ -115,9 +130,10 @@ const indexGroups = computed<IndexQuoteGroup[]>(() => {
     "a-share": "A 股指数",
     hk: "港股指数",
     us: "美股指数",
+    commodity: "贵金属",
   };
 
-  return (["a-share", "hk", "us"] as IndexDefinition["market"][])
+  return (["a-share", "hk", "us", "commodity"] as IndexDefinition["market"][])
     .map((market) => ({
       key: market,
       title: groupTitles[market],
@@ -131,10 +147,13 @@ const hasEnabledFunds = computed(() => enabledFunds.value.length > 0);
 const isTradingTime = computed(() => isAStockTradingTime());
 const holdingSummary = computed(() => holdingStore.summary);
 const holdingRowMap = computed<Record<string, HoldingComputed>>(() =>
-  holdingStore.computedHoldings.reduce<Record<string, HoldingComputed>>((result, row) => {
-    result[row.fundCode] = row;
-    return result;
-  }, {}),
+  holdingStore.computedHoldings.reduce<Record<string, HoldingComputed>>(
+    (result, row) => {
+      result[row.fundCode] = row;
+      return result;
+    },
+    {},
+  ),
 );
 
 const fundListRows = computed<DashboardFundRow[]>(() =>
@@ -166,7 +185,10 @@ const sortedFundListRows = computed<DashboardFundRow[]>(() => {
   const factor = fundSortOrder.value === "asc" ? 1 : -1;
 
   rows.sort((left, right) => {
-    const result = compareNullableNumber(left[fundSortBy.value], right[fundSortBy.value]);
+    const result = compareNullableNumber(
+      left[fundSortBy.value],
+      right[fundSortBy.value],
+    );
     if (result !== 0) {
       return result * factor;
     }
@@ -178,17 +200,26 @@ const sortedFundListRows = computed<DashboardFundRow[]>(() => {
 });
 
 const selectedFundRow = computed<DashboardFundRow | null>(
-  () => sortedFundListRows.value.find((row) => row.code === selectedFundCode.value) ?? null,
+  () =>
+    sortedFundListRows.value.find(
+      (row) => row.code === selectedFundCode.value,
+    ) ?? null,
 );
 
 const refreshIntervalMinutes = computed(() => {
   const value = Number(settingsStore.refreshIntervalMinutes);
-  return Number.isFinite(value) && value > 0 ? value : DEFAULT_REFRESH_INTERVAL_MINUTES;
+  return Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_REFRESH_INTERVAL_MINUTES;
 });
 
-const refreshIntervalText = computed(() => `${refreshIntervalMinutes.value} 分钟`);
+const refreshIntervalText = computed(
+  () => `${refreshIntervalMinutes.value} 分钟`,
+);
 const lastRefreshText = computed(() => formatDateTime(fundStore.lastRefreshAt));
-const indexLastRefreshText = computed(() => formatDateTime(indexLastRefreshAt.value));
+const indexLastRefreshText = computed(() =>
+  formatDateTime(indexLastRefreshAt.value),
+);
 const isRefreshingDashboard = computed(
   () => fundStore.isRefreshingEstimates || isRefreshingIndexes.value,
 );
@@ -201,14 +232,20 @@ watch(
       return;
     }
 
-    if (!selectedFundCode.value || !rows.some((row) => row.code === selectedFundCode.value)) {
+    if (
+      !selectedFundCode.value ||
+      !rows.some((row) => row.code === selectedFundCode.value)
+    ) {
       selectedFundCode.value = rows[0].code;
     }
   },
   { immediate: true },
 );
 
-function compareNullableNumber(left: number | null, right: number | null): number {
+function compareNullableNumber(
+  left: number | null,
+  right: number | null,
+): number {
   if (left === null && right === null) {
     return 0;
   }
@@ -248,7 +285,10 @@ function formatSignedPercent(value: number | null | undefined): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-function formatSignedNumber(value: number | null | undefined, digits = 2): string {
+function formatSignedNumber(
+  value: number | null | undefined,
+  digits = 2,
+): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "--";
   }
@@ -272,7 +312,9 @@ function formatSignedMoney(value: number | null | undefined): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
 }
 
-function formatMarketStatus(status: IndexQuote["marketStatus"] | undefined): string {
+function formatMarketStatus(
+  status: IndexQuote["marketStatus"] | undefined,
+): string {
   const statusTexts: Record<IndexQuote["marketStatus"], string> = {
     open: "交易中",
     closed: "已休市",
@@ -290,8 +332,13 @@ function getGrowthClass(value: number | null | undefined): string {
   return value > 0 ? "growth-up" : "growth-down";
 }
 
-function getStatusType(status: DataStatus): "info" | "primary" | "success" | "warning" | "danger" {
-  const statusTypes: Record<DataStatus, "info" | "primary" | "success" | "warning" | "danger"> = {
+function getStatusType(
+  status: DataStatus,
+): "info" | "primary" | "success" | "warning" | "danger" {
+  const statusTypes: Record<
+    DataStatus,
+    "info" | "primary" | "success" | "warning" | "danger"
+  > = {
     idle: "info",
     loading: "primary",
     success: "success",
@@ -338,11 +385,6 @@ function getDisplayName(row: FundEstimateRow): string {
   return row.estimate?.name || row.fund.name || "未命名基金";
 }
 
-function getAlias(fund: FundItem): string {
-  return fund.alias?.trim() || "--";
-}
-
-
 function getHoldingProfit(code: string): number | null | undefined {
   return holdingRowMap.value[code]?.estimatedProfit;
 }
@@ -355,15 +397,24 @@ function getTodayProfit(code: string): number | null | undefined {
   return holdingRowMap.value[code]?.todayProfit;
 }
 
-function getTodayProfitPercent(holding: HoldingComputed | undefined): number | null {
-  if (!holding || !Number.isFinite(holding.amount) || holding.amount <= 0 || holding.todayProfit === null) {
+function getTodayProfitPercent(
+  holding: HoldingComputed | undefined,
+): number | null {
+  if (
+    !holding ||
+    !Number.isFinite(holding.amount) ||
+    holding.amount <= 0 ||
+    holding.todayProfit === null
+  ) {
     return null;
   }
 
   return (holding.todayProfit / holding.amount) * 100;
 }
 
-function getFundChangeAmount(estimate: FundEstimate | undefined): number | null {
+function getFundChangeAmount(
+  estimate: FundEstimate | undefined,
+): number | null {
   if (!estimate || estimate.nav === null) {
     return null;
   }
@@ -375,7 +426,9 @@ function getFundChangeAmount(estimate: FundEstimate | undefined): number | null 
   return 0;
 }
 
-function getFundChangePercent(estimate: FundEstimate | undefined): number | null {
+function getFundChangePercent(
+  estimate: FundEstimate | undefined,
+): number | null {
   if (!estimate || estimate.nav === null || estimate.nav <= 0) {
     return null;
   }
@@ -403,44 +456,14 @@ function getSecondaryNavLabel(estimate: FundEstimate | undefined): string {
   return getFundNavDisplay(estimate).usingOfficialNav ? "盘中估值" : "最新净值";
 }
 
-function getSecondaryNavValue(estimate: FundEstimate | undefined): number | null {
+function getSecondaryNavValue(
+  estimate: FundEstimate | undefined,
+): number | null {
   if (getFundNavDisplay(estimate).usingOfficialNav) {
     return estimate?.estimatedNav ?? null;
   }
 
   return estimate?.nav ?? null;
-}
-
-function getRowsSummary(rows: IndexQuoteRow[]): string {
-  const availableRows = rows.filter((row) => row.quote && !row.quote.error);
-  const upCount = availableRows.filter((row) => (row.quote?.changePercent ?? 0) > 0).length;
-  const downCount = availableRows.filter((row) => (row.quote?.changePercent ?? 0) < 0).length;
-  const staleCount = rows.filter((row) => row.status === "stale").length;
-  const errorCount = rows.filter((row) => row.status === "error").length;
-
-  return `${availableRows.length}/${rows.length} 可用 · 涨 ${upCount} · 跌 ${downCount}${
-    staleCount > 0 ? ` · 过期 ${staleCount}` : ""
-  }${errorCount > 0 ? ` · 失败 ${errorCount}` : ""}`;
-}
-
-function getGroupLeadRow(rows: IndexQuoteRow[]): IndexQuoteRow | undefined {
-  return rows.find((row) => row.quote && !row.quote.error) ?? rows[0];
-}
-
-function getGroupSummary(group: IndexQuoteGroup): string {
-  const leadRow = getGroupLeadRow(group.rows);
-  if (!leadRow) {
-    return getRowsSummary(group.rows);
-  }
-
-  return `${getRowsSummary(group.rows)} · ${leadRow.definition.name} ${formatNumber(
-    leadRow.quote?.price,
-    2,
-  )} ${formatGrowth(leadRow.quote?.changePercent)}`;
-}
-
-function getIndexSectionSummary(): string {
-  return getRowsSummary(indexRows.value);
 }
 
 function getFundRowClass({ row }: { row: DashboardFundRow }): string {
@@ -475,7 +498,8 @@ async function refreshIndexes(): Promise<void> {
   isRefreshingIndexes.value = true;
 
   try {
-    indexQuotes.value = await indexDataSource.getIndexQuotes(DEFAULT_INDEX_CODES);
+    indexQuotes.value =
+      await indexDataSource.getIndexQuotes(DEFAULT_INDEX_CODES);
   } catch (error) {
     console.error("[DashboardView] Failed to refresh index quotes.", error);
   } finally {
@@ -505,9 +529,12 @@ function clearRefreshTimer(): void {
 function startRefreshTimer(): void {
   clearRefreshTimer();
 
-  refreshTimer = window.setInterval(() => {
-    void refreshDashboard();
-  }, refreshIntervalMinutes.value * 60 * 1000);
+  refreshTimer = window.setInterval(
+    () => {
+      void refreshDashboard();
+    },
+    refreshIntervalMinutes.value * 60 * 1000,
+  );
 }
 
 function goToFunds(): void {
@@ -542,7 +569,11 @@ watch(
         <div class="dashboard-header">
           <div class="title-block">
             <h1>基金估值</h1>
-            <span>最近刷新：{{ lastRefreshText }} · 自动刷新：{{ refreshIntervalText }}</span>
+            <span
+              >最近刷新：{{ lastRefreshText }} · 自动刷新：{{
+                refreshIntervalText
+              }}</span
+            >
           </div>
 
           <el-button
@@ -568,7 +599,9 @@ watch(
       <div class="portfolio-summary">
         <div class="summary-item">
           <span>总估算市值</span>
-          <strong>{{ formatMoney(holdingSummary.totalEstimatedMarketValue) }}</strong>
+          <strong>{{
+            formatMoney(holdingSummary.totalEstimatedMarketValue)
+          }}</strong>
         </div>
 
         <div class="summary-item">
@@ -585,7 +618,9 @@ watch(
 
         <div class="summary-item">
           <span>总估算收益率</span>
-          <strong :class="getGrowthClass(holdingSummary.totalEstimatedProfitPercent)">
+          <strong
+            :class="getGrowthClass(holdingSummary.totalEstimatedProfitPercent)"
+          >
             {{ formatGrowth(holdingSummary.totalEstimatedProfitPercent) }}
           </strong>
         </div>
@@ -599,32 +634,65 @@ watch(
       </div>
     </el-card>
 
-    <el-card shadow="never" class="index-card">
+    <el-card
+      shadow="never"
+      class="index-card"
+      :body-style="
+        isIndexSectionExpanded ? undefined : { padding: 0, display: 'none' }
+      "
+    >
       <template #header>
         <div class="section-header">
-          <button class="collapse-title" type="button" @click="toggleIndexSection">
+          <button
+            class="collapse-title"
+            type="button"
+            @click="toggleIndexSection"
+          >
             <el-icon>
               <ArrowDown v-if="isIndexSectionExpanded" />
               <ArrowRight v-else />
             </el-icon>
             <span>
               <strong>指数行情</strong>
-              <small>
-                最近刷新：{{ indexLastRefreshText }}
-                <template v-if="!isIndexSectionExpanded"> · {{ getIndexSectionSummary() }}</template>
-              </small>
+              <small>最近刷新：{{ indexLastRefreshText }}</small>
+              <span
+                v-if="!isIndexSectionExpanded"
+                class="index-collapse-summary"
+              >
+                <template
+                  v-for="(row, idx) in indexRows"
+                  :key="row.definition.code"
+                >
+                  <template v-if="idx > 0"> · </template>
+                  {{ row.quote?.name || row.definition.name }}
+                  <span :class="getGrowthClass(row.quote?.changePercent)">
+                    {{ formatSignedPercent(row.quote?.changePercent) }}
+                  </span>
+                </template>
+              </span>
             </span>
           </button>
 
-          <el-tag :type="isRefreshingIndexes ? 'primary' : 'info'" effect="light">
+          <el-tag
+            :type="isRefreshingIndexes ? 'primary' : 'info'"
+            effect="light"
+          >
             {{ isRefreshingIndexes ? "刷新中" : "默认指数" }}
           </el-tag>
         </div>
       </template>
 
-      <section v-if="isIndexSectionExpanded" class="index-groups">
-        <section v-for="group in indexGroups" :key="group.key" class="index-group">
-          <button class="group-header" type="button" @click="toggleIndexGroup(group.key)">
+      <div v-if="isIndexSectionExpanded" class="index-groups">
+        <section
+          v-for="group in indexGroups"
+          :key="group.key"
+          class="index-group"
+        >
+          <button
+            class="group-header"
+            type="button"
+            @click="toggleIndexGroup(group.key)"
+          >
             <span class="group-title">
               <el-icon>
                 <ArrowDown v-if="expandedIndexGroups[group.key]" />
@@ -633,71 +701,55 @@ watch(
               <strong>{{ group.title }}</strong>
             </span>
 
-            <span class="group-summary">{{ getGroupSummary(group) }}</span>
+            <span
+              v-if="!expandedIndexGroups[group.key]"
+              class="group-collapse-summary"
+            >
+              <template
+                v-for="(row, idx) in group.rows"
+                :key="row.definition.code"
+              >
+                <template v-if="idx > 0"> · </template>
+                {{ row.quote?.name || row.definition.name }}
+                <span :class="getGrowthClass(row.quote?.changePercent)">
+                  {{ formatSignedPercent(row.quote?.changePercent) }}
+                </span>
+              </template>
+            </span>
           </button>
 
-          <div v-if="expandedIndexGroups[group.key]" class="index-list">
+          <div v-if="expandedIndexGroups[group.key]" class="index-compact-bar">
             <article
               v-for="row in group.rows"
               :key="row.definition.code"
-              class="quote-card"
+              class="index-compact-item"
               :class="{ loading: row.status === 'loading' }"
             >
-              <header class="quote-card-header">
-                <div class="quote-identity">
-                  <strong>{{ row.quote?.name || row.definition.name }}</strong>
-                  <span>{{ row.definition.code }}</span>
-                </div>
+              <div class="compact-identity">
+                <strong>{{ row.quote?.name || row.definition.name }}</strong>
+                <span>{{ row.definition.code }}</span>
+              </div>
 
-                <el-tag :type="getStatusType(row.status)" effect="light">
-                  {{ getStatusText(row.status) }}
-                </el-tag>
-              </header>
-
-              <div class="quote-price">
+              <div class="compact-price">
                 <strong>{{ formatNumber(row.quote?.price, 2) }}</strong>
                 <span :class="getGrowthClass(row.quote?.changePercent)">
                   {{ formatSignedNumber(row.quote?.change, 2) }}
-                  / {{ formatGrowth(row.quote?.changePercent) }}
+                  / {{ formatSignedPercent(row.quote?.changePercent) }}
                 </span>
               </div>
 
-              <div class="field-grid quote-field-grid">
-                <div class="field">
-                  <span>昨收</span>
-                  <strong>{{ formatNumber(row.quote?.previousClose, 2) }}</strong>
-                </div>
-
-                <div class="field">
-                  <span>更新时间</span>
-                  <strong>{{ row.quote?.updateTime || "--" }}</strong>
-                </div>
-
-                <div class="field">
-                  <span>市场状态</span>
-                  <strong>{{ formatMarketStatus(row.quote?.marketStatus) }}</strong>
-                </div>
-
-                <div class="field">
-                  <span>数据源</span>
-                  <strong>{{ row.quote?.source || "--" }}</strong>
-                </div>
-              </div>
-
-              <footer v-if="row.quote?.error || row.status === 'stale'" class="estimate-message">
-                <el-icon><Warning /></el-icon>
-                <span>
-                  {{
-                    row.status === "stale"
-                      ? `当前展示的是上次成功获取的缓存数据。${row.quote?.error || ""}`
-                      : row.quote?.error
-                  }}
-                </span>
-              </footer>
+              <el-tag
+                class="market-status-tag"
+                :type="row.quote?.marketStatus === 'open' ? 'success' : 'info'"
+                size="small"
+                effect="plain"
+              >
+                {{ formatMarketStatus(row.quote?.marketStatus) }}
+              </el-tag>
             </article>
           </div>
         </section>
-      </section>
+      </div>
     </el-card>
 
     <el-card shadow="never" class="summary-card">
@@ -731,11 +783,18 @@ watch(
       </template>
 
       <el-empty v-if="!hasFunds" description="暂无自选基金，请先添加基金代码。">
-        <el-button type="primary" :icon="Plus" @click="goToFunds">添加基金</el-button>
+        <el-button type="primary" :icon="Plus" @click="goToFunds"
+          >添加基金</el-button
+        >
       </el-empty>
 
-      <el-empty v-else-if="!hasEnabledFunds" description="当前没有启用监控的基金。">
-        <el-button type="primary" :icon="Plus" @click="goToFunds">管理基金</el-button>
+      <el-empty
+        v-else-if="!hasEnabledFunds"
+        description="当前没有启用监控的基金。"
+      >
+        <el-button type="primary" :icon="Plus" @click="goToFunds"
+          >管理基金</el-button
+        >
       </el-empty>
 
       <div v-else class="fund-section">
@@ -759,11 +818,11 @@ watch(
             <el-table-column label="涨跌" min-width="180" align="right">
               <template #default="{ row }">
                 <div class="metric-cell">
-                  <strong :class="getGrowthClass(row.changeAmount)">
-                    {{ formatSignedNumber(row.changeAmount, 4) }}
-                  </strong>
-                  <span :class="getGrowthClass(row.changePercent)">
+                  <strong :class="getGrowthClass(row.changePercent)">
                     {{ formatSignedPercent(row.changePercent) }}
+                  </strong>
+                  <span :class="getGrowthClass(row.changeAmount)">
+                    {{ formatSignedNumber(row.changeAmount, 4) }}
                   </span>
                 </div>
               </template>
@@ -808,70 +867,98 @@ watch(
               <span>{{ selectedFundRow.code }}</span>
             </div>
 
-            <el-tag :type="getStatusType(selectedFundRow.detail.status)" effect="light">
+            <el-tag
+              :type="getStatusType(selectedFundRow.detail.status)"
+              effect="light"
+            >
               {{ getStatusText(selectedFundRow.detail.status) }}
             </el-tag>
           </header>
 
           <div class="field-grid">
-
-            <div class="field">
-              <span>别名</span>
-              <strong>{{ getAlias(selectedFundRow.detail.fund) }}</strong>
-            </div>
-
             <div class="field">
               <span>{{ getNavLabel(selectedFundRow.detail.estimate) }}</span>
-              <strong>{{ formatNumber(getNavValue(selectedFundRow.detail.estimate)) }}</strong>
+              <strong>{{
+                formatNumber(getNavValue(selectedFundRow.detail.estimate))
+              }}</strong>
             </div>
 
             <div class="field">
-              <span>涨跌额 / 涨跌幅</span>
-              <strong :class="getGrowthClass(selectedFundRow.changeAmount)">
-                {{ formatSignedNumber(selectedFundRow.changeAmount, 4) }}
-                / {{ formatSignedPercent(selectedFundRow.changePercent) }}
+              <span>涨跌幅 / 涨跌额</span>
+              <strong :class="getGrowthClass(selectedFundRow.changePercent)">
+                {{ formatSignedPercent(selectedFundRow.changePercent) }}
+                / {{ formatSignedNumber(selectedFundRow.changeAmount, 4) }}
               </strong>
             </div>
 
             <div class="field">
-              <span>{{ getSecondaryNavLabel(selectedFundRow.detail.estimate) }}</span>
-              <strong>{{ formatNumber(getSecondaryNavValue(selectedFundRow.detail.estimate)) }}</strong>
+              <span>{{
+                getSecondaryNavLabel(selectedFundRow.detail.estimate)
+              }}</span>
+              <strong>{{
+                formatNumber(
+                  getSecondaryNavValue(selectedFundRow.detail.estimate),
+                )
+              }}</strong>
             </div>
 
             <div class="field">
               <span>净值日期</span>
-              <strong>{{ selectedFundRow.detail.estimate?.navDate || "--" }}</strong>
+              <strong>{{
+                selectedFundRow.detail.estimate?.navDate || "--"
+              }}</strong>
             </div>
 
             <div class="field">
               <span>估值更新时间</span>
-              <strong>{{ selectedFundRow.detail.estimate?.estimateTime || "--" }}</strong>
+              <strong>{{
+                selectedFundRow.detail.estimate?.estimateTime || "--"
+              }}</strong>
             </div>
 
             <div class="field">
               <span>当日收益 / 收益率</span>
-              <strong :class="getGrowthClass(getTodayProfit(selectedFundRow.code))">
+              <strong
+                :class="getGrowthClass(getTodayProfit(selectedFundRow.code))"
+              >
                 {{ formatSignedMoney(getTodayProfit(selectedFundRow.code)) }}
-                / {{ formatSignedPercent(getTodayProfitPercent(holdingRowMap[selectedFundRow.code])) }}
+                /
+                {{
+                  formatSignedPercent(
+                    getTodayProfitPercent(holdingRowMap[selectedFundRow.code]),
+                  )
+                }}
               </strong>
             </div>
 
             <div class="field">
               <span>持有收益 / 收益率</span>
-              <strong :class="getGrowthClass(getHoldingProfit(selectedFundRow.code))">
+              <strong
+                :class="getGrowthClass(getHoldingProfit(selectedFundRow.code))"
+              >
                 {{ formatSignedMoney(getHoldingProfit(selectedFundRow.code)) }}
-                / {{ formatSignedPercent(getHoldingProfitPercent(selectedFundRow.code)) }}
+                /
+                {{
+                  formatSignedPercent(
+                    getHoldingProfitPercent(selectedFundRow.code),
+                  )
+                }}
               </strong>
             </div>
 
             <div class="field">
               <span>数据源</span>
-              <strong>{{ selectedFundRow.detail.estimate?.source || "--" }}</strong>
+              <strong>{{
+                selectedFundRow.detail.estimate?.source || "--"
+              }}</strong>
             </div>
           </div>
 
           <footer
-            v-if="selectedFundRow.detail.estimate?.error || selectedFundRow.detail.status === 'stale'"
+            v-if="
+              selectedFundRow.detail.estimate?.error ||
+              selectedFundRow.detail.status === 'stale'
+            "
             class="estimate-message"
           >
             <el-icon><Warning /></el-icon>
@@ -899,8 +986,7 @@ watch(
 
 .summary-card,
 .index-card,
-.estimate-detail-card,
-.quote-card {
+.estimate-detail-card {
   border: 1px solid var(--el-border-color);
   border-radius: 8px;
 }
@@ -987,8 +1073,10 @@ watch(
 }
 
 .collapse-title > span {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
   min-width: 0;
 }
 
@@ -1002,7 +1090,13 @@ watch(
   color: var(--el-text-color-secondary);
   font-size: 13px;
   font-weight: 400;
-  overflow-wrap: anywhere;
+}
+
+.index-collapse-summary {
+  flex-basis: 100%;
+  line-height: 1.6;
+  margin-top: 2px;
+  min-width: 0;
 }
 
 .table-toolbar {
@@ -1014,12 +1108,6 @@ watch(
 
 .sort-select {
   width: 140px;
-}
-
-.index-list {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .index-groups {
@@ -1063,7 +1151,7 @@ watch(
   min-width: 0;
 }
 
-.group-summary {
+.group-collapse-summary {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   min-width: 0;
@@ -1071,6 +1159,67 @@ watch(
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.index-compact-bar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.index-compact-item {
+  align-items: flex-start;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  position: relative;
+}
+
+.index-compact-item.loading {
+  opacity: 0.72;
+}
+
+.market-status-tag {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+
+.compact-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.compact-identity strong {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.compact-identity span {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.compact-price {
+  display: grid;
+  gap: 2px;
+}
+
+.compact-price strong {
+  color: var(--el-text-color-primary);
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.compact-price span {
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .fund-section {
@@ -1087,16 +1236,14 @@ watch(
 }
 
 .name-cell,
-.fund-identity,
-.quote-identity {
+.fund-identity {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
 .name-cell strong,
-.fund-identity strong,
-.quote-identity strong {
+.fund-identity strong {
   color: var(--el-text-color-primary);
   font-size: 16px;
   line-height: 1.25;
@@ -1104,8 +1251,7 @@ watch(
 }
 
 .name-cell span,
-.fund-identity span,
-.quote-identity span {
+.fund-identity span {
   color: var(--el-text-color-secondary);
   font-size: 12px;
 }
@@ -1125,50 +1271,27 @@ watch(
   font-size: 12px;
 }
 
-.estimate-detail-card,
-.quote-card {
+.estimate-detail-card {
   background: var(--el-bg-color);
   display: grid;
   gap: 14px;
   padding: 16px;
 }
 
-.estimate-detail-card.loading,
-.quote-card.loading {
+.estimate-detail-card.loading {
   opacity: 0.72;
 }
 
-.estimate-card-header,
-.quote-card-header {
+.estimate-card-header {
   align-items: flex-start;
   display: flex;
   gap: 12px;
   justify-content: space-between;
 }
 
-.quote-price {
-  display: grid;
-  gap: 4px;
-}
-
-.quote-price strong {
-  color: var(--el-text-color-primary);
-  font-size: 24px;
-  line-height: 1.15;
-}
-
-.quote-price span {
-  font-size: 14px;
-  font-weight: 600;
-}
-
 .field-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.quote-field-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -1224,6 +1347,10 @@ watch(
 }
 
 @media (max-width: 768px) {
+  .dashboard-view {
+    gap: 12px;
+  }
+
   .dashboard-header,
   .section-header {
     align-items: stretch;
@@ -1240,20 +1367,126 @@ watch(
     flex-direction: column;
   }
 
-  .index-list,
-  .portfolio-summary,
+  .portfolio-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .field-grid {
     grid-template-columns: 1fr;
   }
 
   .group-header {
     grid-template-columns: 1fr;
+    gap: 6px;
   }
 
-  .group-summary {
+  .group-collapse-summary {
     text-align: left;
+    white-space: normal;
+  }
+
+  .summary-item strong {
+    font-size: 14px;
+  }
+
+  .collapse-title strong {
+    font-size: 15px;
+  }
+
+  .collapse-title small {
+    font-size: 11px;
+  }
+
+  .index-collapse-summary {
+    font-size: 11px;
+  }
+
+  .group-title {
+    font-size: 13px;
+  }
+
+  .group-collapse-summary {
+    font-size: 11px;
+  }
+
+  .compact-identity strong {
+    font-size: 13px;
+  }
+
+  .compact-identity span {
+    font-size: 10px;
+  }
+
+  .compact-price strong {
+    font-size: 16px;
+  }
+
+  .compact-price span {
+    font-size: 11px;
+  }
+
+  .index-compact-item {
+    padding: 10px;
+  }
+
+  .name-cell strong,
+  .fund-identity strong {
+    font-size: 14px;
+  }
+
+  .metric-cell strong {
+    font-size: 13px;
+  }
+
+  .field strong {
+    font-size: 13px;
+  }
+
+  .estimate-message {
+    font-size: 11px;
+  }
+}
+
+/* ── Small phones: ≤480px ── */
+@media (max-width: 480px) {
+  .portfolio-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-item {
+    padding: 8px;
+  }
+
+  .summary-item strong {
+    font-size: 14px;
+  }
+
+  .estimate-detail-card {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .title-block h1,
+  .title-block h2 {
+    font-size: 16px;
+  }
+
+  .collapse-title strong {
+    font-size: 14px;
+  }
+
+  .compact-price strong {
+    font-size: 15px;
+  }
+
+  .index-compact-item {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .name-cell strong,
+  .fund-identity strong {
+    font-size: 13px;
   }
 }
 </style>
-
-

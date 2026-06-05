@@ -228,15 +228,56 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .alerts-view {
+    gap: 12px;
+  }
+
   .card-header,
   .alert-card-header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .card-header .el-button,
+  .card-header .el-button {
+    width: 100%;
+  }
+
+  .field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-card,
+  .alert-card {
+    border-radius: 10px;
+  }
+
+  .alert-identity strong {
+    font-size: 16px;
+  }
+
+  .card-header h1 {
+    font-size: 18px;
+  }
+}
+
+/* ── Small phones: ≤480px ── */
+@media (max-width: 480px) {
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .alert-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .alert-message {
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .field strong {
+    font-size: 14px;
   }
 }
 </style>

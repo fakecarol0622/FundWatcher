@@ -4,7 +4,10 @@ import type { useAlertStore } from "../stores/alertStore";
 import type { useSettingsStore } from "../stores/settingsStore";
 import { buildAlertRecordKey } from "../stores/alertStore";
 import { getDateString } from "./timeService";
-import { showBrowserNotification, showToastNotification } from "./notificationService";
+import {
+  showBrowserNotification,
+  showToastNotification,
+} from "./notificationService";
 
 type AlertStoreInstance = ReturnType<typeof useAlertStore>;
 type SettingsStoreInstance = ReturnType<typeof useSettingsStore>;
@@ -30,7 +33,7 @@ function isFiniteNumber(value: number | null | undefined): value is number {
 }
 
 function getFundDisplayName(fund: FundItem, estimate: FundEstimate): string {
-  return fund.alias?.trim() || estimate.name || fund.name || fund.code;
+  return estimate.name || fund.name || fund.code;
 }
 
 function createAlertMessage(
@@ -43,10 +46,18 @@ function createAlertMessage(
   return `${fundName} ${directionText}提醒：当前估算涨跌幅 ${actualGrowth.toFixed(2)}%，已达到阈值 ${threshold.toFixed(2)}%。`;
 }
 
-function createAlertRecord(input: TriggerAlertInput, date: string): Omit<AlertRecord, "triggeredAt"> {
+function createAlertRecord(
+  input: TriggerAlertInput,
+  date: string,
+): Omit<AlertRecord, "triggeredAt"> {
   const fundName = getFundDisplayName(input.fund, input.estimate);
   const actualGrowth = input.estimate.estimatedGrowth as number;
-  const id = buildAlertRecordKey(input.fund.code, input.type, input.threshold, date);
+  const id = buildAlertRecordKey(
+    input.fund.code,
+    input.type,
+    input.threshold,
+    date,
+  );
 
   return {
     id,
@@ -55,7 +66,12 @@ function createAlertRecord(input: TriggerAlertInput, date: string): Omit<AlertRe
     type: input.type,
     threshold: input.threshold,
     actualGrowth,
-    message: createAlertMessage(fundName, input.type, input.threshold, actualGrowth),
+    message: createAlertMessage(
+      fundName,
+      input.type,
+      input.threshold,
+      actualGrowth,
+    ),
     date,
   };
 }
@@ -64,14 +80,22 @@ function shouldTriggerUpAlert(
   estimatedGrowth: number | null | undefined,
   threshold: number | undefined,
 ): threshold is number {
-  return isFiniteNumber(estimatedGrowth) && isFiniteNumber(threshold) && estimatedGrowth >= threshold;
+  return (
+    isFiniteNumber(estimatedGrowth) &&
+    isFiniteNumber(threshold) &&
+    estimatedGrowth >= threshold
+  );
 }
 
 function shouldTriggerDownAlert(
   estimatedGrowth: number | null | undefined,
   threshold: number | undefined,
 ): threshold is number {
-  return isFiniteNumber(estimatedGrowth) && isFiniteNumber(threshold) && estimatedGrowth <= threshold;
+  return (
+    isFiniteNumber(estimatedGrowth) &&
+    isFiniteNumber(threshold) &&
+    estimatedGrowth <= threshold
+  );
 }
 
 export function triggerAlert(
@@ -109,7 +133,12 @@ export function checkFundAlerts(input: CheckFundAlertsInput): AlertRecord[] {
     }
 
     const estimate = input.estimates[fund.code];
-    if (!estimate || estimate.error || estimate.stale || !isFiniteNumber(estimate.estimatedGrowth)) {
+    if (
+      !estimate ||
+      estimate.error ||
+      estimate.stale ||
+      !isFiniteNumber(estimate.estimatedGrowth)
+    ) {
       return;
     }
 
@@ -136,7 +165,12 @@ export function checkFundAlerts(input: CheckFundAlertsInput): AlertRecord[] {
 
     if (
       shouldTriggerDownAlert(estimatedGrowth, fund.thresholdDown) &&
-      !input.alertStore.hasAlertedToday(fund.code, "down", fund.thresholdDown, date)
+      !input.alertStore.hasAlertedToday(
+        fund.code,
+        "down",
+        fund.thresholdDown,
+        date,
+      )
     ) {
       triggeredRecords.push(
         triggerAlert(

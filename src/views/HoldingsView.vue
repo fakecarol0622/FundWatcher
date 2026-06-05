@@ -62,7 +62,9 @@ const sortedFunds = computed(() =>
   [...fundStore.funds].sort((left, right) => right.createdAt - left.createdAt),
 );
 
-const holdingRows = computed<HoldingComputed[]>(() => [...holdingStore.computedHoldings]);
+const holdingRows = computed<HoldingComputed[]>(() => [
+  ...holdingStore.computedHoldings,
+]);
 
 const holdingListRows = computed<HoldingListRow[]>(() =>
   holdingRows.value.map((row) => ({
@@ -83,7 +85,10 @@ const sortedHoldingRows = computed<HoldingListRow[]>(() => {
   const factor = holdingSortOrder.value === "asc" ? 1 : -1;
 
   rows.sort((left, right) => {
-    const result = compareNullableNumber(left[holdingSortBy.value], right[holdingSortBy.value]);
+    const result = compareNullableNumber(
+      left[holdingSortBy.value],
+      right[holdingSortBy.value],
+    );
     if (result !== 0) {
       return result * factor;
     }
@@ -95,7 +100,10 @@ const sortedHoldingRows = computed<HoldingListRow[]>(() => {
 });
 
 const selectedHoldingRow = computed<HoldingListRow | null>(
-  () => sortedHoldingRows.value.find((row) => row.fundCode === selectedHoldingCode.value) ?? null,
+  () =>
+    sortedHoldingRows.value.find(
+      (row) => row.fundCode === selectedHoldingCode.value,
+    ) ?? null,
 );
 
 const holdingNoteMap = computed<Record<string, string>>(() =>
@@ -105,11 +113,15 @@ const holdingNoteMap = computed<Record<string, string>>(() =>
   }, {}),
 );
 
-const heldFundCodes = computed(() => new Set(holdingStore.holdings.map((holding) => holding.fundCode)));
+const heldFundCodes = computed(
+  () => new Set(holdingStore.holdings.map((holding) => holding.fundCode)),
+);
 const canCreateHolding = computed(() =>
   sortedFunds.value.some((fund) => !heldFundCodes.value.has(fund.code)),
 );
-const formTitle = computed(() => (editingFundCode.value ? "编辑持仓" : "添加持仓"));
+const formTitle = computed(() =>
+  editingFundCode.value ? "编辑持仓" : "添加持仓",
+);
 
 watch(
   sortedHoldingRows,
@@ -119,14 +131,20 @@ watch(
       return;
     }
 
-    if (!selectedHoldingCode.value || !rows.some((row) => row.fundCode === selectedHoldingCode.value)) {
+    if (
+      !selectedHoldingCode.value ||
+      !rows.some((row) => row.fundCode === selectedHoldingCode.value)
+    ) {
       selectedHoldingCode.value = rows[0].fundCode;
     }
   },
   { immediate: true },
 );
 
-function compareNullableNumber(left: number | null, right: number | null): number {
+function compareNullableNumber(
+  left: number | null,
+  right: number | null,
+): number {
   if (left === null && right === null) {
     return 0;
   }
@@ -151,7 +169,7 @@ function isPositiveFiniteNumber(value: number | undefined): value is number {
 }
 
 function getFundLabel(fund: FundItem): string {
-  return `${fund.alias || fund.name || fund.code} (${fund.code})`;
+  return `${fund.name || fund.code} (${fund.code})`;
 }
 
 function isFundOptionDisabled(code: string): boolean {
@@ -166,7 +184,10 @@ function formatNumber(value: number | null | undefined, digits = 4): string {
   return value.toFixed(digits);
 }
 
-function formatSignedNumber(value: number | null | undefined, digits = 4): string {
+function formatSignedNumber(
+  value: number | null | undefined,
+  digits = 4,
+): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "--";
   }
@@ -215,7 +236,11 @@ function getChangeAmount(row: HoldingComputed): number | null {
 }
 
 function getChangePercent(row: HoldingComputed): number | null {
-  if (row.currentEstimatedNav === null || row.latestNav === null || row.latestNav <= 0) {
+  if (
+    row.currentEstimatedNav === null ||
+    row.latestNav === null ||
+    row.latestNav <= 0
+  ) {
     return null;
   }
 
@@ -255,7 +280,11 @@ function validateForm(): boolean {
 }
 
 function handleSubmit(): void {
-  if (!validateForm() || !isPositiveFiniteNumber(form.amount) || !isFiniteNumber(form.currentProfit)) {
+  if (
+    !validateForm() ||
+    !isPositiveFiniteNumber(form.amount) ||
+    !isFiniteNumber(form.currentProfit)
+  ) {
     return;
   }
 
@@ -273,7 +302,9 @@ function handleSubmit(): void {
       currentProfit: form.currentProfit,
       note: form.note,
     });
-    ElMessage.error(validation.valid ? "持仓保存失败，请刷新页面后重试" : validation.message);
+    ElMessage.error(
+      validation.valid ? "持仓保存失败，请刷新页面后重试" : validation.message,
+    );
     return;
   }
 
@@ -283,7 +314,9 @@ function handleSubmit(): void {
 }
 
 function startEdit(row: HoldingComputed): void {
-  const holding = holdingStore.holdings.find((item) => item.fundCode === row.fundCode);
+  const holding = holdingStore.holdings.find(
+    (item) => item.fundCode === row.fundCode,
+  );
   if (!holding) {
     return;
   }
@@ -306,11 +339,15 @@ function getHoldingRowClass({ row }: { row: HoldingListRow }): string {
 
 async function handleRemove(row: HoldingComputed): Promise<void> {
   try {
-    await ElMessageBox.confirm(`确认删除 ${row.fundName} 的持仓吗？`, "删除持仓", {
-      confirmButtonText: "删除",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
+    await ElMessageBox.confirm(
+      `确认删除 ${row.fundName} 的持仓吗？`,
+      "删除持仓",
+      {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+      },
+    );
 
     holdingStore.removeHolding(row.fundCode);
     if (editingFundCode.value === row.fundCode) {
@@ -338,15 +375,28 @@ onMounted(() => {
             <span>为已添加基金维护持有金额、当前已有收益和备注。</span>
           </div>
 
-          <el-button v-if="editingFundCode" :icon="RefreshLeft" @click="resetForm">
+          <el-button
+            v-if="editingFundCode"
+            :icon="RefreshLeft"
+            @click="resetForm"
+          >
             取消编辑
           </el-button>
         </div>
       </template>
 
-      <el-empty v-if="sortedFunds.length === 0" description="暂无自选基金，请先添加基金代码。" />
+      <el-empty
+        v-if="sortedFunds.length === 0"
+        description="暂无自选基金，请先添加基金代码。"
+      />
 
-      <el-form v-else class="holding-form" :model="form" label-position="top" @submit.prevent>
+      <el-form
+        v-else
+        class="holding-form"
+        :model="form"
+        label-position="top"
+        @submit.prevent
+      >
         <h2>{{ formTitle }}</h2>
 
         <p class="form-tip">持有金额填写当前持仓金额，已包含目前已有收益。</p>
@@ -390,7 +440,12 @@ onMounted(() => {
         </el-form-item>
 
         <el-form-item label="备注">
-          <el-input v-model="form.note" maxlength="80" placeholder="可选" show-word-limit />
+          <el-input
+            v-model="form.note"
+            maxlength="80"
+            placeholder="可选"
+            show-word-limit
+          />
         </el-form-item>
 
         <el-button
@@ -528,34 +583,46 @@ onMounted(() => {
           <div class="field-grid">
             <div class="field">
               <span>持有金额</span>
-              <strong>{{ formatMoney(selectedHoldingRow.detail.amount) }}</strong>
+              <strong>{{
+                formatMoney(selectedHoldingRow.detail.amount)
+              }}</strong>
             </div>
 
             <div class="field">
               <span>目前已有收益</span>
-              <strong :class="getProfitClass(selectedHoldingRow.detail.currentProfit)">
+              <strong
+                :class="getProfitClass(selectedHoldingRow.detail.currentProfit)"
+              >
                 {{ formatSignedMoney(selectedHoldingRow.detail.currentProfit) }}
               </strong>
             </div>
 
             <div class="field">
               <span>推算本金</span>
-              <strong>{{ formatMoney(selectedHoldingRow.detail.principalAmount) }}</strong>
+              <strong>{{
+                formatMoney(selectedHoldingRow.detail.principalAmount)
+              }}</strong>
             </div>
 
             <div class="field">
               <span>上一净值对应持仓金额</span>
-              <strong>{{ formatMoney(selectedHoldingRow.detail.latestMarketValue) }}</strong>
+              <strong>{{
+                formatMoney(selectedHoldingRow.detail.latestMarketValue)
+              }}</strong>
             </div>
 
             <div class="field">
               <span>当前估算净值</span>
-              <strong>{{ formatNumber(selectedHoldingRow.detail.currentEstimatedNav) }}</strong>
+              <strong>{{
+                formatNumber(selectedHoldingRow.detail.currentEstimatedNav)
+              }}</strong>
             </div>
 
             <div class="field">
               <span>最新净值</span>
-              <strong>{{ formatNumber(selectedHoldingRow.detail.latestNav) }}</strong>
+              <strong>{{
+                formatNumber(selectedHoldingRow.detail.latestNav)
+              }}</strong>
             </div>
 
             <div class="field">
@@ -568,14 +635,17 @@ onMounted(() => {
 
             <div class="field">
               <span>估算市值</span>
-              <strong>{{ formatMoney(selectedHoldingRow.detail.estimatedMarketValue) }}</strong>
+              <strong>{{
+                formatMoney(selectedHoldingRow.detail.estimatedMarketValue)
+              }}</strong>
             </div>
 
             <div class="field">
               <span>当日收益 / 收益率</span>
               <strong :class="getProfitClass(selectedHoldingRow.todayProfit)">
                 {{ formatSignedMoney(selectedHoldingRow.todayProfit) }}
-                / {{ formatSignedPercent(selectedHoldingRow.todayProfitPercent) }}
+                /
+                {{ formatSignedPercent(selectedHoldingRow.todayProfitPercent) }}
               </strong>
             </div>
 
@@ -583,12 +653,17 @@ onMounted(() => {
               <span>持有收益 / 收益率</span>
               <strong :class="getProfitClass(selectedHoldingRow.holdingProfit)">
                 {{ formatSignedMoney(selectedHoldingRow.holdingProfit) }}
-                / {{ formatSignedPercent(selectedHoldingRow.holdingProfitPercent) }}
+                /
+                {{
+                  formatSignedPercent(selectedHoldingRow.holdingProfitPercent)
+                }}
               </strong>
             </div>
           </div>
 
-          <footer class="holding-note">备注：{{ holdingNoteMap[selectedHoldingRow.fundCode] || "--" }}</footer>
+          <footer class="holding-note">
+            备注：{{ holdingNoteMap[selectedHoldingRow.fundCode] || "--" }}
+          </footer>
         </article>
       </div>
     </el-card>
@@ -634,7 +709,10 @@ onMounted(() => {
   align-items: flex-end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr);
+  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 0.8fr) minmax(
+      150px,
+      0.8fr
+    );
 }
 
 .holding-form h2,
@@ -791,6 +869,10 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .holdings-view {
+    gap: 12px;
+  }
+
   .card-header,
   .holding-card-header {
     align-items: stretch;
@@ -812,6 +894,34 @@ onMounted(() => {
 
   .table-toolbar {
     flex-direction: column;
+  }
+
+  .card-header h1,
+  .card-header h2,
+  .holding-form h2 {
+    font-size: 18px;
+  }
+
+  .panel-card,
+  .holding-detail-card {
+    border-radius: 10px;
+  }
+}
+
+/* ── Small phones: ≤480px ── */
+@media (max-width: 480px) {
+  .holding-detail-card {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .field strong {
+    font-size: 14px;
+  }
+
+  .name-cell strong,
+  .fund-identity strong {
+    font-size: 14px;
   }
 }
 </style>

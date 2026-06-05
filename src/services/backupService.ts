@@ -39,7 +39,6 @@ function validateFundItem(value: unknown): ValidationResult<FundItem> {
     typeof value.enabled !== "boolean" ||
     !isFiniteNumber(value.createdAt) ||
     !isFiniteNumber(value.updatedAt) ||
-    !isOptionalString(value.alias) ||
     !isOptionalString(value.name) ||
     !isOptionalNumber(value.thresholdUp) ||
     !isOptionalNumber(value.thresholdDown)
@@ -54,7 +53,6 @@ function validateFundItem(value: unknown): ValidationResult<FundItem> {
       enabled: value.enabled,
       createdAt: value.createdAt,
       updatedAt: value.updatedAt,
-      alias: value.alias,
       name: value.name,
       thresholdUp: value.thresholdUp,
       thresholdDown: value.thresholdDown,
@@ -173,7 +171,9 @@ function validateArray<T>(
   return { valid: true, value: parsedItems };
 }
 
-export function createBackupData(input: Omit<BackupData, "version" | "exportedAt">): BackupData {
+export function createBackupData(
+  input: Omit<BackupData, "version" | "exportedAt">,
+): BackupData {
   return {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
@@ -240,7 +240,10 @@ export function parseBackupJson(raw: string): BackupData {
     throw new Error("备份文件缺少 settings 字段。");
   }
 
-  if (typeof parsed.version !== "string" || parsed.version.trim().length === 0) {
+  if (
+    typeof parsed.version !== "string" ||
+    parsed.version.trim().length === 0
+  ) {
     throw new Error("备份文件的 version 字段无效。");
   }
 
@@ -286,3 +289,4 @@ export async function readBackupFile(file: File): Promise<BackupData> {
   const raw = await file.text();
   return parseBackupJson(raw);
 }
+

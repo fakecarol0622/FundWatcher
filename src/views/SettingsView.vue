@@ -586,6 +586,10 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .settings-view {
+    gap: 12px;
+  }
+
   .setting-row {
     align-items: stretch;
     flex-direction: column;
@@ -600,8 +604,55 @@ onMounted(() => {
   .setting-actions :deep(.el-button),
   .setting-row :deep(.el-input-number),
   .setting-row :deep(.el-segmented),
-  .setting-row :deep(.el-button) {
+  .setting-row :deep(.el-button),
+  .setting-row :deep(.el-switch) {
     width: 100%;
+  }
+
+  .page-card {
+    border-radius: 10px;
+  }
+
+  .card-header h1 {
+    font-size: 18px;
+  }
+
+  .settings-section,
+  .tips-card {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .setting-row {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .section-title strong,
+  .setting-row strong,
+  .tips-header strong {
+    font-size: 15px;
+  }
+}
+
+/* ── Small phones: ≤480px ── */
+@media (max-width: 480px) {
+  .settings-section,
+  .tips-card {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .setting-row {
+    padding: 10px;
+  }
+
+  .tips-list {
+    font-size: 13px;
+  }
+
+  .setting-row p {
+    font-size: 12px;
   }
 }
 </style>

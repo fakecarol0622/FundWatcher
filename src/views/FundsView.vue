@@ -13,7 +13,6 @@ const settingsStore = useSettingsStore();
 
 const addForm = reactive({
   code: "",
-  alias: "",
 });
 
 const sortedFunds = computed(() =>
@@ -24,11 +23,6 @@ const fundCountText = computed(() => `${fundStore.funds.length} 只`);
 
 function normalizeCode(code: string): string {
   return code.trim();
-}
-
-function normalizeAlias(alias: string): string | undefined {
-  const trimmedAlias = alias.trim();
-  return trimmedAlias || undefined;
 }
 
 function isValidFundCode(code: string): boolean {
@@ -60,7 +54,6 @@ async function handleAddFund(): Promise<void> {
 
   const addedFund = fundStore.addFund({
     code,
-    alias: normalizeAlias(addForm.alias),
     enabled: true,
     thresholdUp: settingsStore.defaultThresholdUp,
     thresholdDown: settingsStore.defaultThresholdDown,
@@ -72,7 +65,6 @@ async function handleAddFund(): Promise<void> {
   }
 
   addForm.code = "";
-  addForm.alias = "";
   ElMessage.success("已添加自选基金");
 
   if (!addedFund.name) {
@@ -80,25 +72,30 @@ async function handleAddFund(): Promise<void> {
   }
 }
 
-function updateFund(code: string, patch: Partial<Omit<FundItem, "code" | "createdAt">>): void {
+function updateFund(
+  code: string,
+  patch: Partial<Omit<FundItem, "code" | "createdAt">>,
+): void {
   fundStore.updateFund(code, patch);
-}
-
-function handleAliasChange(code: string, alias: string): void {
-  updateFund(code, { alias: normalizeAlias(alias) });
 }
 
 function handleEnabledChange(code: string, enabled: boolean): void {
   updateFund(code, { enabled });
 }
 
-function handleThresholdUpChange(code: string, value: number | undefined): void {
+function handleThresholdUpChange(
+  code: string,
+  value: number | undefined,
+): void {
   updateFund(code, {
     thresholdUp: value ?? settingsStore.defaultThresholdUp,
   });
 }
 
-function handleThresholdDownChange(code: string, value: number | undefined): void {
+function handleThresholdDownChange(
+  code: string,
+  value: number | undefined,
+): void {
   updateFund(code, {
     thresholdDown: value ?? settingsStore.defaultThresholdDown,
   });
@@ -106,11 +103,15 @@ function handleThresholdDownChange(code: string, value: number | undefined): voi
 
 async function handleRemoveFund(fund: FundItem): Promise<void> {
   try {
-    await ElMessageBox.confirm(`确认删除基金 ${fund.code} 吗？`, "删除自选基金", {
-      confirmButtonText: "删除",
-      cancelButtonText: "取消",
-      type: "warning",
-    });
+    await ElMessageBox.confirm(
+      `确认删除基金 ${fund.code} 吗？`,
+      "删除自选基金",
+      {
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        type: "warning",
+      },
+    );
 
     fundStore.removeFund(fund.code);
     holdingStore.removeHolding(fund.code);
@@ -133,7 +134,12 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
         </div>
       </template>
 
-      <el-form class="add-form" :model="addForm" label-position="top" @submit.prevent>
+      <el-form
+        class="add-form"
+        :model="addForm"
+        label-position="top"
+        @submit.prevent
+      >
         <el-form-item label="基金代码">
           <el-input
             v-model="addForm.code"
@@ -145,17 +151,12 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
           />
         </el-form-item>
 
-        <el-form-item label="别名">
-          <el-input
-            v-model="addForm.alias"
-            clearable
-            maxlength="24"
-            placeholder="可选"
-            @keyup.enter="handleAddFund"
-          />
-        </el-form-item>
-
-        <el-button class="add-button" type="primary" :icon="Plus" @click="handleAddFund">
+        <el-button
+          class="add-button"
+          type="primary"
+          :icon="Plus"
+          @click="handleAddFund"
+        >
           添加
         </el-button>
       </el-form>
@@ -182,17 +183,6 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
         </header>
 
         <div class="field-grid">
-          <label class="field">
-            <span>别名</span>
-            <el-input
-              :model-value="fund.alias ?? ''"
-              clearable
-              maxlength="24"
-              placeholder="可选"
-              @update:model-value="(value: string) => handleAliasChange(fund.code, value)"
-            />
-          </label>
-
           <label class="field switch-field">
             <span>
               <el-icon><SwitchButton /></el-icon>
@@ -202,7 +192,9 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
               :model-value="fund.enabled"
               active-text="启用"
               inactive-text="停用"
-              @update:model-value="(value: boolean) => handleEnabledChange(fund.code, value)"
+              @update:model-value="
+                (value: boolean) => handleEnabledChange(fund.code, value)
+              "
             />
           </label>
 
@@ -212,11 +204,16 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
               上涨阈值
             </span>
             <el-input-number
-              :model-value="fund.thresholdUp ?? settingsStore.defaultThresholdUp"
+              :model-value="
+                fund.thresholdUp ?? settingsStore.defaultThresholdUp
+              "
               :step="0.1"
               :precision="2"
               controls-position="right"
-              @update:model-value="(value: number | undefined) => handleThresholdUpChange(fund.code, value)"
+              @update:model-value="
+                (value: number | undefined) =>
+                  handleThresholdUpChange(fund.code, value)
+              "
             />
           </label>
 
@@ -226,16 +223,23 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
               下跌阈值
             </span>
             <el-input-number
-              :model-value="fund.thresholdDown ?? settingsStore.defaultThresholdDown"
+              :model-value="
+                fund.thresholdDown ?? settingsStore.defaultThresholdDown
+              "
               :step="0.1"
               :precision="2"
               controls-position="right"
-              @update:model-value="(value: number | undefined) => handleThresholdDownChange(fund.code, value)"
+              @update:model-value="
+                (value: number | undefined) =>
+                  handleThresholdDownChange(fund.code, value)
+              "
             />
           </label>
         </div>
 
-        <footer class="fund-meta">更新于 {{ formatTime(fund.updatedAt) }}</footer>
+        <footer class="fund-meta">
+          更新于 {{ formatTime(fund.updatedAt) }}
+        </footer>
       </article>
     </div>
   </section>
@@ -277,7 +281,7 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
   align-items: flex-end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: 1fr auto;
 }
 
 .add-form :deep(.el-form-item) {
@@ -353,6 +357,7 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
 
 .switch-field {
   align-content: start;
+  grid-column: 1 / -1;
 }
 
 .fund-meta {
@@ -361,6 +366,10 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
 }
 
 @media (max-width: 768px) {
+  .funds-view {
+    gap: 12px;
+  }
+
   .add-form,
   .field-grid {
     grid-template-columns: 1fr;
@@ -369,5 +378,59 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
   .add-button {
     width: 100%;
   }
+
+  .fund-list {
+    grid-template-columns: 1fr;
+  }
+
+  .fund-card {
+    padding: 14px;
+    gap: 12px;
+    position: relative;
+  }
+
+  .fund-card-header {
+    padding-right: 36px;
+  }
+
+  .fund-card-header .el-button {
+    position: absolute;
+    right: 14px;
+    top: 14px;
+  }
+
+  .fund-identity strong {
+    font-size: 16px;
+  }
+
+  .card-header h1 {
+    font-size: 18px;
+  }
+
+  .add-card,
+  .fund-card {
+    border-radius: 10px;
+  }
+}
+
+/* ── Small phones: ≤480px ── */
+@media (max-width: 480px) {
+  .fund-card {
+    padding: 12px;
+  }
+
+  .fund-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .fund-card-header .el-button {
+    align-self: flex-end;
+  }
+
+  .field > span {
+    font-size: 12px;
+  }
 }
 </style>
+
