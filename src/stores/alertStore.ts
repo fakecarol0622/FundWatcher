@@ -1,20 +1,22 @@
 import { defineStore } from "pinia";
 import type { AlertRecord, AlertType } from "../types/alert";
 import { getItem, setItem, STORAGE_KEYS } from "../services/storageService";
+import { getDateString } from "../services/timeService";
 
 type AlertRecordInput = Omit<AlertRecord, "id" | "triggeredAt"> &
   Partial<Pick<AlertRecord, "id" | "triggeredAt">>;
 
-function getTodayString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+export function buildAlertRecordKey(
+  fundCode: string,
+  type: AlertType,
+  threshold: number,
+  date: string,
+): string {
+  return `${fundCode}:${type}:${threshold}:${date}`;
 }
 
 function createAlertId(record: AlertRecordInput): string {
-  return `${record.fundCode}-${record.type}-${record.threshold}-${record.date}`;
+  return buildAlertRecordKey(record.fundCode, record.type, record.threshold, record.date);
 }
 
 export const useAlertStore = defineStore("alert", {
@@ -43,15 +45,10 @@ export const useAlertStore = defineStore("alert", {
       fundCode: string,
       type: AlertType,
       threshold: number,
-      date = getTodayString(),
+      date = getDateString(),
     ): boolean {
-      return this.alertRecords.some(
-        (record) =>
-          record.fundCode === fundCode &&
-          record.type === type &&
-          record.threshold === threshold &&
-          record.date === date,
-      );
+      const alertKey = buildAlertRecordKey(fundCode, type, threshold, date);
+      return this.alertRecords.some((record) => record.id === alertKey);
     },
 
     loadFromStorage(): void {

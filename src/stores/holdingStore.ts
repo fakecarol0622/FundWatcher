@@ -1,4 +1,4 @@
-import { defineStore } from "pinia";
+﻿import { defineStore } from "pinia";
 import type { FundEstimate, FundItem } from "../types/fund";
 import type { Holding, HoldingComputed, HoldingSummary } from "../types/holding";
 import { getItem, setItem, STORAGE_KEYS } from "../services/storageService";
@@ -52,7 +52,7 @@ function validateHoldingInput(
 }
 
 function getFundName(fund: FundItem, estimate: FundEstimate | undefined): string {
-  return estimate?.name || fund.name || fund.alias || fund.code;
+  return estimate?.name || fund.name || "未命名基金";
 }
 
 function computeEstimatedMarketValue(

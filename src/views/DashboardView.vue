@@ -1,21 +1,36 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowDown, ArrowRight, Plus, Refresh, Warning } from "@element-plus/icons-vue";
+import { checkFundAlerts } from "../services/alertService";
+import { getFundNavDisplay } from "../services/fundValueService";
+import { useAlertStore } from "../stores/alertStore";
 import { useFundStore } from "../stores/fundStore";
 import { useHoldingStore } from "../stores/holdingStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { DEFAULT_INDEX_CODES, DEFAULT_INDEXES, indexDataSource } from "../services/indexDataSource";
 import { formatDateTime, isAStockTradingTime } from "../services/timeService";
-import type { DataStatus, FundEstimate, FundItem } from "../types/fund";
-import type { HoldingComputed } from "../types/holding";
 import type { IndexDefinition } from "../services/indexDataSource";
+import type { FundEstimate, FundItem, DataStatus } from "../types/fund";
+import type { HoldingComputed } from "../types/holding";
 import type { IndexQuote } from "../types/indexQuote";
 
 interface FundEstimateRow {
   fund: FundItem;
   estimate: FundEstimate | undefined;
   status: DataStatus;
+}
+
+interface DashboardFundRow {
+  code: string;
+  displayName: string;
+  changeAmount: number | null;
+  changePercent: number | null;
+  todayProfit: number | null;
+  todayProfitPercent: number | null;
+  holdingProfit: number | null;
+  holdingProfitPercent: number | null;
+  detail: FundEstimateRow;
 }
 
 interface IndexQuoteRow {
@@ -30,22 +45,44 @@ interface IndexQuoteGroup {
   rows: IndexQuoteRow[];
 }
 
+type SortOrder = "asc" | "desc";
+type DashboardSortField =
+  | "changeAmount"
+  | "changePercent"
+  | "todayProfit"
+  | "todayProfitPercent"
+  | "holdingProfit"
+  | "holdingProfitPercent";
+
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 30;
 
 const router = useRouter();
 const fundStore = useFundStore();
 const holdingStore = useHoldingStore();
+const alertStore = useAlertStore();
 const settingsStore = useSettingsStore();
 
 const indexQuotes = ref<IndexQuote[]>([]);
 const isRefreshingIndexes = ref(false);
 const indexLastRefreshAt = ref<number | null>(null);
 const isIndexSectionExpanded = ref(true);
+const selectedFundCode = ref<string | null>(null);
+const fundSortBy = ref<DashboardSortField>("changePercent");
+const fundSortOrder = ref<SortOrder>("desc");
 const expandedIndexGroups = ref<Record<IndexDefinition["market"], boolean>>({
   "a-share": true,
   hk: true,
   us: true,
 });
+
+const fundSortOptions: Array<{ label: string; value: DashboardSortField }> = [
+  { label: "涨跌额", value: "changeAmount" },
+  { label: "涨跌幅", value: "changePercent" },
+  { label: "当日收益额", value: "todayProfit" },
+  { label: "当日收益率", value: "todayProfitPercent" },
+  { label: "持有收益额", value: "holdingProfit" },
+  { label: "持有收益率", value: "holdingProfitPercent" },
+];
 
 let refreshTimer: number | undefined;
 
@@ -100,6 +137,50 @@ const holdingRowMap = computed<Record<string, HoldingComputed>>(() =>
   }, {}),
 );
 
+const fundListRows = computed<DashboardFundRow[]>(() =>
+  estimateRows.value.map((row) => {
+    const holding = holdingRowMap.value[row.fund.code];
+    const changeAmount = getFundChangeAmount(row.estimate);
+    const changePercent = getFundChangePercent(row.estimate);
+    const todayProfit = holding?.todayProfit ?? null;
+    const todayProfitPercent = getTodayProfitPercent(holding);
+    const holdingProfit = holding?.estimatedProfit ?? null;
+    const holdingProfitPercent = holding?.estimatedProfitPercent ?? null;
+
+    return {
+      code: row.fund.code,
+      displayName: getDisplayName(row),
+      changeAmount,
+      changePercent,
+      todayProfit,
+      todayProfitPercent,
+      holdingProfit,
+      holdingProfitPercent,
+      detail: row,
+    };
+  }),
+);
+
+const sortedFundListRows = computed<DashboardFundRow[]>(() => {
+  const rows = [...fundListRows.value];
+  const factor = fundSortOrder.value === "asc" ? 1 : -1;
+
+  rows.sort((left, right) => {
+    const result = compareNullableNumber(left[fundSortBy.value], right[fundSortBy.value]);
+    if (result !== 0) {
+      return result * factor;
+    }
+
+    return left.displayName.localeCompare(right.displayName, "zh-CN");
+  });
+
+  return rows;
+});
+
+const selectedFundRow = computed<DashboardFundRow | null>(
+  () => sortedFundListRows.value.find((row) => row.code === selectedFundCode.value) ?? null,
+);
+
 const refreshIntervalMinutes = computed(() => {
   const value = Number(settingsStore.refreshIntervalMinutes);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_REFRESH_INTERVAL_MINUTES;
@@ -111,6 +192,37 @@ const indexLastRefreshText = computed(() => formatDateTime(indexLastRefreshAt.va
 const isRefreshingDashboard = computed(
   () => fundStore.isRefreshingEstimates || isRefreshingIndexes.value,
 );
+
+watch(
+  sortedFundListRows,
+  (rows) => {
+    if (rows.length === 0) {
+      selectedFundCode.value = null;
+      return;
+    }
+
+    if (!selectedFundCode.value || !rows.some((row) => row.code === selectedFundCode.value)) {
+      selectedFundCode.value = rows[0].code;
+    }
+  },
+  { immediate: true },
+);
+
+function compareNullableNumber(left: number | null, right: number | null): number {
+  if (left === null && right === null) {
+    return 0;
+  }
+
+  if (left === null) {
+    return 1;
+  }
+
+  if (right === null) {
+    return -1;
+  }
+
+  return left - right;
+}
 
 function formatNumber(value: number | null | undefined, digits = 4): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
@@ -128,6 +240,14 @@ function formatGrowth(value: number | null | undefined): string {
   return `${value.toFixed(2)}%`;
 }
 
+function formatSignedPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
 function formatSignedNumber(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "--";
@@ -142,6 +262,14 @@ function formatMoney(value: number | null | undefined): string {
   }
 
   return value.toFixed(2);
+}
+
+function formatSignedMoney(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
 }
 
 function formatMarketStatus(status: IndexQuote["marketStatus"] | undefined): string {
@@ -180,7 +308,7 @@ function getStatusText(status: DataStatus): string {
     loading: "刷新中",
     success: "正常",
     error: "获取失败",
-    stale: "可能已过期",
+    stale: "缓存过期",
   };
 
   return statusTexts[status];
@@ -214,8 +342,73 @@ function getAlias(fund: FundItem): string {
   return fund.alias?.trim() || "--";
 }
 
+
 function getHoldingProfit(code: string): number | null | undefined {
   return holdingRowMap.value[code]?.estimatedProfit;
+}
+
+function getHoldingProfitPercent(code: string): number | null | undefined {
+  return holdingRowMap.value[code]?.estimatedProfitPercent;
+}
+
+function getTodayProfit(code: string): number | null | undefined {
+  return holdingRowMap.value[code]?.todayProfit;
+}
+
+function getTodayProfitPercent(holding: HoldingComputed | undefined): number | null {
+  if (!holding || !Number.isFinite(holding.amount) || holding.amount <= 0 || holding.todayProfit === null) {
+    return null;
+  }
+
+  return (holding.todayProfit / holding.amount) * 100;
+}
+
+function getFundChangeAmount(estimate: FundEstimate | undefined): number | null {
+  if (!estimate || estimate.nav === null) {
+    return null;
+  }
+
+  if (estimate.estimatedNav !== null) {
+    return estimate.estimatedNav - estimate.nav;
+  }
+
+  return 0;
+}
+
+function getFundChangePercent(estimate: FundEstimate | undefined): number | null {
+  if (!estimate || estimate.nav === null || estimate.nav <= 0) {
+    return null;
+  }
+
+  if (estimate.estimatedGrowth !== null) {
+    return estimate.estimatedGrowth;
+  }
+
+  if (estimate.estimatedNav !== null) {
+    return ((estimate.estimatedNav - estimate.nav) / estimate.nav) * 100;
+  }
+
+  return 0;
+}
+
+function getNavLabel(estimate: FundEstimate | undefined): string {
+  return getFundNavDisplay(estimate).label;
+}
+
+function getNavValue(estimate: FundEstimate | undefined): number | null {
+  return getFundNavDisplay(estimate).value;
+}
+
+function getSecondaryNavLabel(estimate: FundEstimate | undefined): string {
+  return getFundNavDisplay(estimate).usingOfficialNav ? "盘中估值" : "最新净值";
+}
+
+function getSecondaryNavValue(estimate: FundEstimate | undefined): number | null {
+  if (getFundNavDisplay(estimate).usingOfficialNav) {
+    return estimate?.estimatedNav ?? null;
+  }
+
+  return estimate?.nav ?? null;
 }
 
 function getRowsSummary(rows: IndexQuoteRow[]): string {
@@ -250,12 +443,20 @@ function getIndexSectionSummary(): string {
   return getRowsSummary(indexRows.value);
 }
 
+function getFundRowClass({ row }: { row: DashboardFundRow }): string {
+  return row.code === selectedFundCode.value ? "is-selected-row" : "";
+}
+
 function toggleIndexSection(): void {
   isIndexSectionExpanded.value = !isIndexSectionExpanded.value;
 }
 
 function toggleIndexGroup(key: IndexDefinition["market"]): void {
   expandedIndexGroups.value[key] = !expandedIndexGroups.value[key];
+}
+
+function handleFundRowClick(row: DashboardFundRow): void {
+  selectedFundCode.value = row.code;
 }
 
 async function refreshEstimates(): Promise<void> {
@@ -285,6 +486,13 @@ async function refreshIndexes(): Promise<void> {
 
 async function refreshDashboard(): Promise<void> {
   await Promise.allSettled([refreshIndexes(), refreshEstimates()]);
+
+  checkFundAlerts({
+    funds: fundStore.enabledFunds,
+    estimates: fundStore.estimates,
+    alertStore,
+    settingsStore,
+  });
 }
 
 function clearRefreshTimer(): void {
@@ -309,6 +517,7 @@ function goToFunds(): void {
 onMounted(() => {
   fundStore.loadFromStorage();
   holdingStore.loadFromStorage();
+  alertStore.loadFromStorage();
   settingsStore.loadFromStorage();
   void refreshDashboard();
   startRefreshTimer();
@@ -353,7 +562,7 @@ watch(
         type="warning"
         :closable="false"
         show-icon
-        title="当前为非交易时间，估值数据可能为最近一次更新数据或上次收盘数据。"
+        title="当前为非交易时段，估值数据可能显示为最近一次成功获取的数据或上次收盘数据。"
       />
 
       <div class="portfolio-summary">
@@ -368,7 +577,7 @@ watch(
         </div>
 
         <div class="summary-item">
-          <span>总估算盈亏</span>
+          <span>总估算收益</span>
           <strong :class="getGrowthClass(holdingSummary.totalEstimatedProfit)">
             {{ formatMoney(holdingSummary.totalEstimatedProfit) }}
           </strong>
@@ -480,7 +689,7 @@ watch(
                 <span>
                   {{
                     row.status === "stale"
-                      ? `正在展示上次成功缓存。${row.quote?.error || ""}`
+                      ? `当前展示的是上次成功获取的缓存数据。${row.quote?.error || ""}`
                       : row.quote?.error
                   }}
                 </span>
@@ -492,6 +701,34 @@ watch(
     </el-card>
 
     <el-card shadow="never" class="summary-card">
+      <template #header>
+        <div class="section-header">
+          <div class="title-block">
+            <h2>自选基金</h2>
+            <span>点击列表中的基金后，在下方查看详细卡片。</span>
+          </div>
+
+          <div v-if="hasEnabledFunds" class="table-toolbar">
+            <el-select v-model="fundSortBy" size="small" class="sort-select">
+              <el-option
+                v-for="option in fundSortOptions"
+                :key="option.value"
+                :label="`按${option.label}排序`"
+                :value="option.value"
+              />
+            </el-select>
+
+            <el-segmented
+              v-model="fundSortOrder"
+              size="small"
+              :options="[
+                { label: '降序', value: 'desc' },
+                { label: '升序', value: 'asc' },
+              ]"
+            />
+          </div>
+        </div>
+      </template>
 
       <el-empty v-if="!hasFunds" description="暂无自选基金，请先添加基金代码。">
         <el-button type="primary" :icon="Plus" @click="goToFunds">添加基金</el-button>
@@ -501,72 +738,148 @@ watch(
         <el-button type="primary" :icon="Plus" @click="goToFunds">管理基金</el-button>
       </el-empty>
 
-      <div v-else class="estimate-list">
-        <article v-for="row in estimateRows" :key="row.fund.code" class="estimate-card">
+      <div v-else class="fund-section">
+        <div class="table-wrap">
+          <el-table
+            :data="sortedFundListRows"
+            stripe
+            class="fund-table"
+            :row-class-name="getFundRowClass"
+            @row-click="handleFundRowClick"
+          >
+            <el-table-column label="基金" min-width="220">
+              <template #default="{ row }">
+                <div class="name-cell">
+                  <strong>{{ row.displayName }}</strong>
+                  <span>{{ row.code }}</span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="涨跌" min-width="180" align="right">
+              <template #default="{ row }">
+                <div class="metric-cell">
+                  <strong :class="getGrowthClass(row.changeAmount)">
+                    {{ formatSignedNumber(row.changeAmount, 4) }}
+                  </strong>
+                  <span :class="getGrowthClass(row.changePercent)">
+                    {{ formatSignedPercent(row.changePercent) }}
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="当日收益" min-width="180" align="right">
+              <template #default="{ row }">
+                <div class="metric-cell">
+                  <strong :class="getGrowthClass(row.todayProfit)">
+                    {{ formatSignedMoney(row.todayProfit) }}
+                  </strong>
+                  <span :class="getGrowthClass(row.todayProfitPercent)">
+                    {{ formatSignedPercent(row.todayProfitPercent) }}
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="持有收益" min-width="180" align="right">
+              <template #default="{ row }">
+                <div class="metric-cell">
+                  <strong :class="getGrowthClass(row.holdingProfit)">
+                    {{ formatSignedMoney(row.holdingProfit) }}
+                  </strong>
+                  <span :class="getGrowthClass(row.holdingProfitPercent)">
+                    {{ formatSignedPercent(row.holdingProfitPercent) }}
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <article
+          v-if="selectedFundRow"
+          class="estimate-detail-card"
+          :class="{ loading: selectedFundRow.detail.status === 'loading' }"
+        >
           <header class="estimate-card-header">
             <div class="fund-identity">
-              <strong>{{ getDisplayName(row) }}</strong>
-              <span>{{ row.fund.code }}</span>
+              <strong>{{ selectedFundRow.displayName }}</strong>
+              <span>{{ selectedFundRow.code }}</span>
             </div>
 
-            <el-tag :type="getStatusType(row.status)" effect="light">
-              {{ getStatusText(row.status) }}
+            <el-tag :type="getStatusType(selectedFundRow.detail.status)" effect="light">
+              {{ getStatusText(selectedFundRow.detail.status) }}
             </el-tag>
           </header>
 
-          <div class="field-grid" :class="{ loading: row.status === 'loading' }">
+          <div class="field-grid">
+
             <div class="field">
               <span>别名</span>
-              <strong>{{ getAlias(row.fund) }}</strong>
+              <strong>{{ getAlias(selectedFundRow.detail.fund) }}</strong>
             </div>
 
             <div class="field">
-              <span>估算净值</span>
-              <strong>{{ formatNumber(row.estimate?.estimatedNav) }}</strong>
+              <span>{{ getNavLabel(selectedFundRow.detail.estimate) }}</span>
+              <strong>{{ formatNumber(getNavValue(selectedFundRow.detail.estimate)) }}</strong>
             </div>
 
             <div class="field">
-              <span>估算涨跌幅</span>
-              <strong :class="getGrowthClass(row.estimate?.estimatedGrowth)">
-                {{ formatGrowth(row.estimate?.estimatedGrowth) }}
+              <span>涨跌额 / 涨跌幅</span>
+              <strong :class="getGrowthClass(selectedFundRow.changeAmount)">
+                {{ formatSignedNumber(selectedFundRow.changeAmount, 4) }}
+                / {{ formatSignedPercent(selectedFundRow.changePercent) }}
               </strong>
             </div>
 
             <div class="field">
-              <span>上一正式净值</span>
-              <strong>{{ formatNumber(row.estimate?.nav) }}</strong>
+              <span>{{ getSecondaryNavLabel(selectedFundRow.detail.estimate) }}</span>
+              <strong>{{ formatNumber(getSecondaryNavValue(selectedFundRow.detail.estimate)) }}</strong>
             </div>
 
             <div class="field">
               <span>净值日期</span>
-              <strong>{{ row.estimate?.navDate || "--" }}</strong>
+              <strong>{{ selectedFundRow.detail.estimate?.navDate || "--" }}</strong>
             </div>
 
             <div class="field">
               <span>估值更新时间</span>
-              <strong>{{ row.estimate?.estimateTime || "--" }}</strong>
+              <strong>{{ selectedFundRow.detail.estimate?.estimateTime || "--" }}</strong>
             </div>
 
             <div class="field">
-              <span>持仓盈亏</span>
-              <strong :class="getGrowthClass(getHoldingProfit(row.fund.code))">
-                {{ formatMoney(getHoldingProfit(row.fund.code)) }}
+              <span>当日收益 / 收益率</span>
+              <strong :class="getGrowthClass(getTodayProfit(selectedFundRow.code))">
+                {{ formatSignedMoney(getTodayProfit(selectedFundRow.code)) }}
+                / {{ formatSignedPercent(getTodayProfitPercent(holdingRowMap[selectedFundRow.code])) }}
+              </strong>
+            </div>
+
+            <div class="field">
+              <span>持有收益 / 收益率</span>
+              <strong :class="getGrowthClass(getHoldingProfit(selectedFundRow.code))">
+                {{ formatSignedMoney(getHoldingProfit(selectedFundRow.code)) }}
+                / {{ formatSignedPercent(getHoldingProfitPercent(selectedFundRow.code)) }}
               </strong>
             </div>
 
             <div class="field">
               <span>数据源</span>
-              <strong>{{ row.estimate?.source || "--" }}</strong>
+              <strong>{{ selectedFundRow.detail.estimate?.source || "--" }}</strong>
             </div>
           </div>
 
-          <footer v-if="row.estimate?.error || row.status === 'stale'" class="estimate-message">
+          <footer
+            v-if="selectedFundRow.detail.estimate?.error || selectedFundRow.detail.status === 'stale'"
+            class="estimate-message"
+          >
             <el-icon><Warning /></el-icon>
             <span>
               {{
-                row.status === "stale"
-                  ? `正在展示上次成功缓存。${row.estimate?.error || ""}`
-                  : row.estimate?.error
+                selectedFundRow.detail.status === "stale"
+                  ? `当前展示的是上次成功获取的缓存数据。${selectedFundRow.detail.estimate?.error || ""}`
+                  : selectedFundRow.detail.estimate?.error
               }}
             </span>
           </footer>
@@ -586,7 +899,7 @@ watch(
 
 .summary-card,
 .index-card,
-.estimate-card,
+.estimate-detail-card,
 .quote-card {
   border: 1px solid var(--el-border-color);
   border-radius: 8px;
@@ -605,7 +918,8 @@ watch(
   min-width: 0;
 }
 
-.title-block h1 {
+.title-block h1,
+.title-block h2 {
   color: var(--el-text-color-primary);
   font-size: 20px;
   line-height: 1.2;
@@ -691,6 +1005,17 @@ watch(
   overflow-wrap: anywhere;
 }
 
+.table-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.sort-select {
+  width: 140px;
+}
+
 .index-list {
   display: grid;
   gap: 12px;
@@ -748,13 +1073,59 @@ watch(
   white-space: nowrap;
 }
 
-.estimate-list {
+.fund-section {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
 
-.estimate-card,
+.table-wrap {
+  overflow-x: auto;
+}
+
+.fund-table {
+  min-width: 760px;
+}
+
+.name-cell,
+.fund-identity,
+.quote-identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.name-cell strong,
+.fund-identity strong,
+.quote-identity strong {
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.name-cell span,
+.fund-identity span,
+.quote-identity span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.metric-cell {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.metric-cell strong {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.metric-cell span {
+  font-size: 12px;
+}
+
+.estimate-detail-card,
 .quote-card {
   background: var(--el-bg-color);
   display: grid;
@@ -762,6 +1133,7 @@ watch(
   padding: 16px;
 }
 
+.estimate-detail-card.loading,
 .quote-card.loading {
   opacity: 0.72;
 }
@@ -772,27 +1144,6 @@ watch(
   display: flex;
   gap: 12px;
   justify-content: space-between;
-}
-
-.fund-identity,
-.quote-identity {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.fund-identity strong,
-.quote-identity strong {
-  color: var(--el-text-color-primary);
-  font-size: 18px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.fund-identity span,
-.quote-identity span {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
 }
 
 .quote-price {
@@ -819,10 +1170,6 @@ watch(
 
 .quote-field-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.field-grid.loading {
-  opacity: 0.72;
 }
 
 .field {
@@ -872,24 +1219,29 @@ watch(
   overflow-wrap: anywhere;
 }
 
+:deep(.fund-table .is-selected-row td) {
+  background: var(--el-color-primary-light-9) !important;
+}
+
 @media (max-width: 768px) {
-  .dashboard-header {
+  .dashboard-header,
+  .section-header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .section-header {
-    align-items: flex-start;
-    flex-direction: column;
+  .dashboard-header .el-button,
+  .table-toolbar,
+  .sort-select {
+    width: 100%;
   }
 
-  .dashboard-header .el-button {
-    width: 100%;
+  .table-toolbar {
+    flex-direction: column;
   }
 
   .index-list,
   .portfolio-summary,
-  .estimate-list,
   .field-grid {
     grid-template-columns: 1fr;
   }
@@ -903,3 +1255,5 @@ watch(
   }
 }
 </style>
+
+

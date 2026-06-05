@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, reactive } from "vue";
 import { Delete, Plus, Setting, SwitchButton } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -45,7 +45,7 @@ function formatTime(timestamp: number): string {
   }).format(timestamp);
 }
 
-function handleAddFund(): void {
+async function handleAddFund(): Promise<void> {
   const code = normalizeCode(addForm.code);
 
   if (!isValidFundCode(code)) {
@@ -58,7 +58,7 @@ function handleAddFund(): void {
     return;
   }
 
-  fundStore.addFund({
+  const addedFund = fundStore.addFund({
     code,
     alias: normalizeAlias(addForm.alias),
     enabled: true,
@@ -66,9 +66,18 @@ function handleAddFund(): void {
     thresholdDown: settingsStore.defaultThresholdDown,
   });
 
+  if (!addedFund) {
+    ElMessage.error("添加基金失败，请重试");
+    return;
+  }
+
   addForm.code = "";
   addForm.alias = "";
   ElMessage.success("已添加自选基金");
+
+  if (!addedFund.name) {
+    void fundStore.refreshFundEstimate(addedFund.code);
+  }
 }
 
 function updateFund(code: string, patch: Partial<Omit<FundItem, "code" | "createdAt">>): void {
@@ -97,7 +106,7 @@ function handleThresholdDownChange(code: string, value: number | undefined): voi
 
 async function handleRemoveFund(fund: FundItem): Promise<void> {
   try {
-    await ElMessageBox.confirm(`确认删除基金 ${fund.code}？`, "删除自选基金", {
+    await ElMessageBox.confirm(`确认删除基金 ${fund.code} 吗？`, "删除自选基金", {
       confirmButtonText: "删除",
       cancelButtonText: "取消",
       type: "warning",
@@ -158,7 +167,7 @@ async function handleRemoveFund(fund: FundItem): Promise<void> {
       <article v-for="fund in sortedFunds" :key="fund.code" class="fund-card">
         <header class="fund-card-header">
           <div class="fund-identity">
-            <strong>{{ fund.alias || fund.name || fund.code }}</strong>
+            <strong>{{ fund.name || "未命名基金" }}</strong>
             <span>{{ fund.code }}</span>
           </div>
 

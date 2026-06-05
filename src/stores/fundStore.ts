@@ -1,8 +1,8 @@
-import { defineStore } from "pinia";
+﻿import { defineStore } from "pinia";
 import { fundDataSource } from "../services/fundDataSource";
+import { getItem, setItem, STORAGE_KEYS } from "../services/storageService";
 import { defaultSettings } from "../types/settings";
 import type { DataStatus, FundEstimate, FundItem } from "../types/fund";
-import { getItem, setItem, STORAGE_KEYS } from "../services/storageService";
 
 type FundEstimateMap = Record<string, FundEstimate>;
 type FundEstimateStatusMap = Record<string, DataStatus>;
@@ -12,8 +12,25 @@ type FundInput = Pick<FundItem, "code"> &
 
 type FundUpdate = Partial<Omit<FundItem, "code" | "createdAt">>;
 
+const DATA_SOURCE_NAME = "天天基金估值 JSONP";
+
 function isValidFundCode(code: string): boolean {
   return /^\d{6}$/.test(code);
+}
+
+function buildErrorEstimate(code: string, message: string): FundEstimate {
+  return {
+    code,
+    name: "",
+    estimatedNav: null,
+    estimatedGrowth: null,
+    nav: null,
+    navDate: null,
+    estimateTime: null,
+    source: DATA_SOURCE_NAME,
+    error: message,
+    cachedAt: Date.now(),
+  };
 }
 
 export const useFundStore = defineStore("fund", {
@@ -34,6 +51,7 @@ export const useFundStore = defineStore("fund", {
       const now = Date.now();
       const fundInput = typeof input === "string" ? { code: input } : input;
       const code = fundInput.code.trim();
+      const cachedEstimate = this.estimates[code];
 
       if (!isValidFundCode(code) || this.funds.some((fund) => fund.code === code)) {
         return null;
@@ -41,7 +59,7 @@ export const useFundStore = defineStore("fund", {
 
       const fund: FundItem = {
         code,
-        name: fundInput.name,
+        name: fundInput.name || cachedEstimate?.name || undefined,
         alias: fundInput.alias,
         enabled: fundInput.enabled ?? true,
         thresholdUp: fundInput.thresholdUp ?? defaultSettings.defaultThresholdUp,
@@ -110,6 +128,44 @@ export const useFundStore = defineStore("fund", {
       return "success";
     },
 
+    async refreshFundEstimate(code: string): Promise<FundEstimate> {
+      const normalizedCode = code.trim();
+      this.estimateStatuses[normalizedCode] = "loading";
+
+      try {
+        const estimate = await fundDataSource.getFundEstimate(normalizedCode);
+        this.updateEstimate(estimate);
+        this.estimateStatuses[normalizedCode] = estimate.stale
+          ? "stale"
+          : estimate.error
+            ? "error"
+            : "success";
+        this.lastRefreshAt = Date.now();
+        return estimate;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "基金估值刷新失败。";
+        console.error("[fundStore] Failed to refresh a fund estimate.", error);
+
+        const cachedEstimate = this.estimates[normalizedCode];
+        if (cachedEstimate) {
+          this.estimates[normalizedCode] = {
+            ...cachedEstimate,
+            error: message,
+            stale: true,
+            cachedAt: cachedEstimate.cachedAt ?? Date.now(),
+          };
+          this.estimateStatuses[normalizedCode] = "stale";
+        } else {
+          this.estimates[normalizedCode] = buildErrorEstimate(normalizedCode, message);
+          this.estimateStatuses[normalizedCode] = "error";
+        }
+
+        this.saveToStorage();
+        this.lastRefreshAt = Date.now();
+        return this.estimates[normalizedCode];
+      }
+    },
+
     async refreshEnabledEstimates(): Promise<void> {
       const codes = this.enabledFunds.map((fund) => fund.code);
       if (codes.length === 0) {
@@ -147,18 +203,7 @@ export const useFundStore = defineStore("fund", {
             };
             this.estimateStatuses[code] = "stale";
           } else {
-            this.estimates[code] = {
-              code,
-              name: "",
-              estimatedNav: null,
-              estimatedGrowth: null,
-              nav: null,
-              navDate: null,
-              estimateTime: null,
-              source: "天天基金估值 JSONP",
-              error: message,
-              cachedAt: Date.now(),
-            };
+            this.estimates[code] = buildErrorEstimate(code, message);
             this.estimateStatuses[code] = "error";
           }
         });

@@ -1,7 +1,7 @@
-export interface FundItem {
+﻿export interface FundItem {
   code: string;
-  name?: string;
   alias?: string;
+  name?: string;
   enabled: boolean;
   thresholdUp?: number;
   thresholdDown?: number;

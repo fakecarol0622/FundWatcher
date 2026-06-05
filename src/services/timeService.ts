@@ -16,6 +16,13 @@ export function isAStockTradingTime(now = new Date()): boolean {
   );
 }
 
+export function getDateString(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function formatDateTime(timestamp: number | null | undefined): string {
   if (!timestamp) {
     return "--";
