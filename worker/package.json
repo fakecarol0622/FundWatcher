@@ -1,0 +1,16 @@
+{
+  "name": "fund-watcher-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260606.0",
+    "typescript": "^5.5.3",
+    "wrangler": "^4.98.0"
+  }
+}

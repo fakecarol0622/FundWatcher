@@ -1,0 +1,6 @@
+name = "fund-watcher-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-06"
+
+[vars]
+ALLOWED_ORIGIN = "*"
