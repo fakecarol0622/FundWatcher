@@ -4,3 +4,8 @@ compatibility_date = "2026-06-06"
 
 [vars]
 ALLOWED_ORIGIN = "*"
+
+[[kv_namespaces]]
+binding = "FUND_WATCHER_KV"
+id = "a1a1c4c28d51424b8cac4ff6d7d77343"
+preview_id = "575ba06500d94ef68b902e6ca501f4d5"
